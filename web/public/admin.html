@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Group Radar — Quản trị</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    /* =====================================================================
+       Group Radar — trang QUẢN TRỊ. Dùng đúng hệ thiết kế "Market Terminal"
+       như index.html / dashboard (graphite chroma 0 + một accent warm-sand
+       low-chroma, JetBrains Mono cho mọi con số, viền hairline phẳng, OKLCH).
+       Bản này nâng cấp về trải nghiệm: app-shell có brand mark, dải số liệu
+       người dùng, ô tìm kiếm, thẻ người dùng có avatar, badge trạng thái/vai
+       trò, bảng sửa dữ liệu inline, skeleton khi tải, empty-state dạy giao
+       diện, hộp xác nhận + toast theo đúng hệ thống (không dùng confirm()).
+       ===================================================================== */
+    :root {
+      color-scheme: dark;
+
+      /* ---- Graphite surface ramp (neutral, chroma 0) ---- */
+      --bg: oklch(0.155 0 0);
+      --surface: oklch(0.19 0 0);
+      --surface-2: oklch(0.225 0 0);
+      --surface-3: oklch(0.262 0 0);
+      --ink: oklch(0.96 0 0);
+      --ink-soft: oklch(0.765 0 0);
+      --ink-faint: oklch(0.6 0 0);
+      --line: oklch(0.3 0 0);
+      --line-soft: oklch(0.255 0 0);
+
+      /* ---- Restrained accent — a quiet warm sand, used sparingly ---- */
+      --accent: oklch(0.745 0.045 80);
+      --accent-bright: oklch(0.8 0.05 82);
+      --accent-soft: oklch(0.285 0.014 80);
+      --accent-ink: oklch(0.8 0.04 82);
+      --on-accent: oklch(0.2 0.012 80);
+      --accent-ring: oklch(0.745 0.045 80 / 0.4);
+
+      /* ---- Semantic state — muted, functional only ---- */
+      --green: oklch(0.72 0.085 150);
+      --green-soft: oklch(0.32 0.06 150);
+      --green-ink: oklch(0.86 0.09 150);
+      --red: oklch(0.64 0.115 25);
+      --red-soft: oklch(0.285 0.05 25);
+      --red-ink: oklch(0.82 0.1 25);
+      --danger: var(--red);
+
+      /* ---- Radius: tight, instrument-like ---- */
+      --r-sm: 6px;
+      --r-md: 9px;
+      --r-lg: 12px;
+
+      /* ---- Elevation (floating layers only) ---- */
+      --shadow-pop: 0 16px 40px -12px oklch(0 0 0 / 0.6),
+        0 2px 8px -2px oklch(0 0 0 / 0.5);
+
+      /* ---- Motion ---- */
+      --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+      --t-fast: 0.12s;
+      --t-mid: 0.18s;
+
+      /* ---- Type ---- */
+      --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+      --font-display: "Space Grotesk", var(--font);
+      --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo,
+        Consolas, monospace;
+
+      /* ---- z-index scale ---- */
+      --z-toast: 1000;
+      --z-modal: 900;
+      --z-backdrop: 800;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    /* Quiet terminal scrollbar */
+    * { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+    *::-webkit-scrollbar { width: 10px; height: 10px; }
+    *::-webkit-scrollbar-thumb {
+      background: var(--line);
+      border-radius: 99px;
+      border: 3px solid transparent;
+      background-clip: content-box;
+    }
+    *::-webkit-scrollbar-track { background: transparent; }
+
+    ::selection { background: var(--accent-soft); color: var(--ink); }
+
+    /* ====================== Topbar ====================== */
+    header.topbar {
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      background: oklch(0.175 0 0 / 0.86);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--line);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: var(--r-sm);
+      display: grid;
+      place-items: center;
+      background: var(--accent-soft);
+      color: var(--accent-ink);
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: -0.02em;
+      border: 1px solid var(--line);
+    }
+    .brand-text { display: flex; flex-direction: column; line-height: 1.15; }
+    .brand-name {
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+    }
+    .brand-tag {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+    }
+    .userbox {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      color: var(--ink-soft);
+    }
+    .user-email {
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      color: var(--ink);
+      padding: 4px 9px;
+      background: var(--surface-2);
+      border: 1px solid var(--line-soft);
+      border-radius: var(--r-sm);
+    }
+    .topbar-link {
+      color: var(--ink-soft);
+      text-decoration: none;
+      font-weight: 500;
+      transition: color var(--t-fast);
+    }
+    .topbar-link:hover { color: var(--accent-ink); }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 20px 72px;
+    }
+
+    /* ====================== Page header ====================== */
+    .page-head { margin-bottom: 22px; }
+    .page-title {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .page-sub {
+      margin: 4px 0 0;
+      color: var(--ink-soft);
+      font-size: 13.5px;
+    }
+
+    /* ====================== Panels ====================== */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line-soft);
+      border-radius: var(--r-lg);
+      padding: 0;
+      margin-bottom: 18px;
+      overflow: hidden;
+    }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .panel-head-left { display: flex; align-items: center; gap: 10px; }
+    .panel h2 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+    }
+    .panel-body { padding: 16px 18px; }
+    .count-pill {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--ink-soft);
+      background: var(--surface-2);
+      border: 1px solid var(--line-soft);
+      border-radius: 99px;
+      padding: 2px 9px;
+    }
+    .count-pill:empty { display: none; }
+
+    /* ====================== Stat strip ====================== */
+    .stat-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1px;
+      background: var(--line-soft);
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .stat-strip:empty { display: none; }
+    .stat {
+      background: var(--surface);
+      padding: 14px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .stat-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+    }
+    .stat-value {
+      font-family: var(--font-mono);
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+    }
+    .stat.is-pending .stat-value { color: var(--accent-ink); }
+    .stat.is-locked .stat-value { color: var(--red-ink); }
+
+    /* ====================== Toolbar / search ====================== */
+    .search {
+      position: relative;
+      min-width: 240px;
+    }
+    .search input {
+      width: 100%;
+      margin: 0;
+      padding: 8px 12px 8px 32px;
+      font-size: 13px;
+    }
+    .search::before {
+      content: "";
+      position: absolute;
+      left: 11px;
+      top: 50%;
+      width: 13px;
+      height: 13px;
+      transform: translateY(-50%);
+      background: var(--ink-faint);
+      -webkit-mask: no-repeat center / contain
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.2-3.2'/%3E%3C/svg%3E");
+      mask: no-repeat center / contain
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.2-3.2'/%3E%3C/svg%3E");
+    }
+
+    /* ====================== Forms ====================== */
+    label {
+      display: block;
+      font-size: 12.5px;
+      margin-bottom: 6px;
+      font-weight: 600;
+      color: var(--ink-soft);
+    }
+    .field { margin-bottom: 14px; }
+    .field:last-child { margin-bottom: 0; }
+    input[type="email"],
+    input[type="password"],
+    input[type="text"],
+    input[type="number"],
+    textarea,
+    select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--r-sm);
+      font-size: 14px;
+      font-family: inherit;
+      background: var(--surface-2);
+      color: var(--ink);
+      outline: none;
+      transition: border-color var(--t-fast), box-shadow var(--t-fast);
+    }
+    textarea { resize: vertical; }
+    input::placeholder { color: var(--ink-faint); }
+    input:focus,
+    input:focus-visible,
+    textarea:focus,
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-ring);
+    }
+
+    /* ====================== Buttons ====================== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      background: var(--accent);
+      color: var(--on-accent);
+      border: 1px solid transparent;
+      border-radius: var(--r-sm);
+      padding: 9px 16px;
+      font-size: 13.5px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background var(--t-fast), border-color var(--t-fast),
+        color var(--t-fast), filter var(--t-fast);
+    }
+    .btn:hover { background: var(--accent-bright); }
+    .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
+    .btn.primary { background: var(--accent); color: var(--on-accent); }
+    .btn.ghost {
+      background: var(--surface-2);
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+    .btn.ghost:hover { border-color: var(--accent); color: var(--accent-ink); }
+    .btn.danger {
+      background: transparent;
+      color: var(--red-ink);
+      border: 1px solid var(--red-soft);
+    }
+    .btn.danger:hover { background: var(--red-soft); border-color: var(--red); }
+    .btn.solid-danger { background: var(--red); color: oklch(0.98 0 0); }
+    .btn.solid-danger:hover { filter: brightness(1.1); }
+    .btn.sm { padding: 5px 11px; font-size: 12px; }
+    .btn.block { width: 100%; padding: 11px 16px; }
+    .btn:disabled { opacity: 0.4; pointer-events: none; }
+
+    /* ====================== Auth (login) ====================== */
+    .auth-card {
+      max-width: 400px;
+      margin: 56px auto;
+      background: var(--surface);
+      border: 1px solid var(--line-soft);
+      border-radius: var(--r-lg);
+      padding: 32px 30px;
+      text-align: center;
+    }
+    .auth-mark {
+      width: 46px;
+      height: 46px;
+      margin: 0 auto 16px;
+      border-radius: var(--r-md);
+      display: grid;
+      place-items: center;
+      background: var(--accent-soft);
+      color: var(--accent-ink);
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+      border: 1px solid var(--line);
+    }
+    .auth-title {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: 19px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+    }
+    .auth-sub {
+      margin: 8px 0 22px;
+      color: var(--ink-soft);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .auth-form { text-align: left; }
+    .auth-form .field:last-of-type { margin-bottom: 18px; }
+
+    /* ====================== State card (forbidden / empty) ====================== */
+    .state-card {
+      background: var(--surface);
+      border: 1px solid var(--line-soft);
+      border-radius: var(--r-lg);
+      padding: 40px 30px;
+      text-align: center;
+      max-width: 460px;
+      margin: 48px auto;
+    }
+    .state-card h2 {
+      margin: 0 0 8px;
+      font-family: var(--font-display);
+      font-size: 17px;
+      font-weight: 600;
+    }
+    .state-card p { margin: 0 0 18px; color: var(--ink-soft); }
+
+    /* ====================== Status lines ====================== */
+    .status {
+      font-size: 13px;
+      min-height: 16px;
+      margin: 12px 18px;
+      color: var(--ink-soft);
+    }
+    .status:empty { margin: 0; min-height: 0; }
+    .auth-card .status { margin: 14px 0 0; }
+    .status.error { color: var(--red-ink); }
+    .status.success { color: var(--green-ink); }
+    .status.info { color: var(--ink-faint); }
+
+    /* ====================== Segmented picker ====================== */
+    .seg {
+      display: inline-flex;
+      border: 1px solid var(--line);
+      border-radius: var(--r-sm);
+      overflow: hidden;
+      margin: 16px 18px 0;
+    }
+    .seg-btn {
+      background: var(--surface-2);
+      color: var(--ink-soft);
+      border: none;
+      border-right: 1px solid var(--line);
+      border-radius: 0;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background var(--t-fast), color var(--t-fast);
+    }
+    .seg-btn:last-child { border-right: none; }
+    .seg-btn:hover { background: var(--surface-3); color: var(--ink); }
+    .seg-btn.active,
+    .seg-btn.active:hover { background: var(--accent-soft); color: var(--accent-ink); }
+    .seg-btn:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--accent-ring); }
+
+    /* ====================== Tables ====================== */
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line-soft);
+      padding: 11px 14px;
+      text-align: left;
+      vertical-align: middle;
+    }
+    th {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+    }
+    td { font-variant-numeric: tabular-nums; }
+    tbody tr { transition: background var(--t-fast); }
+    tbody tr:hover { background: var(--surface-2); }
+    tbody tr:last-child td { border-bottom: none; }
+
+    .col-id { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); }
+    .col-date { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+    th.right, td.right { text-align: right; }
+
+    /* User identity cell */
+    .user-cell { display: flex; align-items: center; gap: 11px; }
+    .avatar {
+      flex: none;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      font-size: 12px;
+      color: oklch(0.96 0 0);
+    }
+    .user-meta { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+    .user-name { font-weight: 600; color: var(--ink); }
+    .user-mail { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-faint); }
+
+    /* Inline editors inside table cells */
+    td input,
+    td textarea,
+    td select { margin-bottom: 0; font-size: 12.5px; padding: 6px 8px; }
+    td textarea { min-width: 240px; min-height: 38px; }
+
+    .row-actions { white-space: nowrap; }
+    .row-actions .btn { margin-left: 6px; }
+    .row-actions .btn:first-child { margin-left: 0; }
+
+    /* ====================== Badges ====================== */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      letter-spacing: 0.01em;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .badge::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-radius: 99px;
+      background: currentColor;
+    }
+    .badge.role-admin::before,
+    .badge.role-user::before { display: none; }
+    .badge.pending { background: var(--accent-soft); color: var(--accent-ink); }
+    .badge.approved { background: var(--green-soft); color: var(--green-ink); }
+    .badge.locked { background: var(--red-soft); color: var(--red-ink); }
+    .badge.role-admin { background: var(--surface-3); color: var(--accent-ink); border-color: var(--line); }
+    .badge.role-user { background: var(--surface-2); color: var(--ink-soft); border-color: var(--line-soft); }
+
+    /* ====================== Skeleton ====================== */
+    .skeleton {
+      display: block;
+      height: 12px;
+      border-radius: var(--r-sm);
+      background: linear-gradient(
+        90deg,
+        var(--surface-2) 25%,
+        var(--surface-3) 37%,
+        var(--surface-2) 63%
+      );
+      background-size: 400% 100%;
+      animation: shimmer 1.4s ease infinite;
+    }
+    .skeleton.avatar-sk { width: 32px; height: 32px; border-radius: 8px; }
+    @keyframes shimmer {
+      0% { background-position: 100% 0; }
+      100% { background-position: 0 0; }
+    }
+
+    /* ====================== Empty state ====================== */
+    .empty {
+      padding: 44px 24px;
+      text-align: center;
+      color: var(--ink-soft);
+    }
+    .empty-title { font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+    .empty-desc { font-size: 13px; color: var(--ink-faint); }
+
+    /* ====================== Modal (confirm) ====================== */
+    .backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: var(--z-backdrop);
+      background: oklch(0 0 0 / 0.55);
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      animation: fade var(--t-mid) var(--ease-out);
+    }
+    .modal {
+      z-index: var(--z-modal);
+      width: 100%;
+      max-width: 400px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-pop);
+      padding: 22px 22px 18px;
+      animation: pop var(--t-mid) var(--ease-out);
+    }
+    .modal h3 {
+      margin: 0 0 8px;
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .modal p { margin: 0 0 20px; color: var(--ink-soft); font-size: 13.5px; line-height: 1.55; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+    @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes pop { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }
+
+    /* ====================== Toasts ====================== */
+    .toast-root {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: var(--z-toast);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 340px;
+    }
+    .toast {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      background: var(--surface-3);
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+      box-shadow: var(--shadow-pop);
+      padding: 11px 14px;
+      font-size: 13px;
+      color: var(--ink);
+      animation: toast-in var(--t-mid) var(--ease-out);
+    }
+    .toast::before {
+      content: "";
+      flex: none;
+      width: 4px;
+      align-self: stretch;
+      border-radius: 99px;
+      background: var(--accent);
+      margin: 1px 0;
+    }
+    .toast.success::before { background: var(--green); }
+    .toast.error::before { background: var(--red); }
+    .toast.leaving { animation: toast-out var(--t-mid) var(--ease-out) forwards; }
+    @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    @keyframes toast-out { to { opacity: 0; transform: translateY(8px); } }
+
+    .hidden { display: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .panel-head { align-items: stretch; }
+      .search { min-width: 0; width: 100%; }
+      main { padding: 20px 14px 60px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">GR</span>
+      <div class="brand-text">
+        <span class="brand-name">Group Radar</span>
+        <span class="brand-tag">Quản trị</span>
+      </div>
+    </div>
+    <div id="userbox" class="userbox hidden">
+      <span id="user-email" class="user-email"></span>
+      <a class="topbar-link" href="/">Bảng dữ liệu</a>
+      <button id="logout-btn" class="btn ghost sm" type="button">Đăng xuất</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Login (chỉ admin mới qua được sau khi đăng nhập) -->
+    <section id="login-card" class="auth-card">
+      <div class="auth-mark">GR</div>
+      <h1 class="auth-title">Quản trị Group Radar</h1>
+      <p class="auth-sub">
+        Đăng nhập bằng tài khoản quản trị để duyệt người dùng và quản lý dữ liệu hệ thống.
+      </p>
+      <form id="login-form" class="auth-form">
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="username" placeholder="admin@example.com" required />
+        </div>
+        <div class="field">
+          <label for="password">Mật khẩu</label>
+          <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" required />
+        </div>
+        <button type="submit" class="btn primary block">Đăng nhập</button>
+      </form>
+      <div id="login-status" class="status"></div>
+    </section>
+
+    <!-- Đã đăng nhập nhưng không phải admin -->
+    <section id="forbidden" class="hidden state-card">
+      <h2>Không có quyền truy cập</h2>
+      <p>Tài khoản này không có quyền quản trị. Đăng xuất để đổi sang tài khoản admin.</p>
+      <button id="forbidden-logout" class="btn ghost" type="button">Đăng xuất</button>
+    </section>
+
+    <!-- Khu quản trị (ẩn cho tới khi đăng nhập bằng tài khoản admin) -->
+    <div id="admin" class="hidden">
+      <div class="page-head">
+        <h1 class="page-title">Quản trị hệ thống</h1>
+        <p class="page-sub">Duyệt tài khoản, phân quyền và chỉnh sửa dữ liệu người dùng.</p>
+      </div>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-head-left">
+            <h2>Người dùng</h2>
+            <span id="users-count" class="count-pill"></span>
+          </div>
+          <div class="search">
+            <input id="user-search" type="text" placeholder="Tìm theo email hoặc tên…" autocomplete="off" />
+          </div>
+        </div>
+        <div id="user-stats" class="stat-strip"></div>
+        <div id="users-status" class="status info"></div>
+        <div id="users-table" class="table-wrap"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-head-left">
+            <h2>Dữ liệu</h2>
+            <span id="data-count" class="count-pill"></span>
+          </div>
+        </div>
+        <div class="seg" id="table-seg">
+          <button type="button" class="seg-btn active" data-table="posts">Bài viết</button>
+          <button type="button" class="seg-btn" data-table="groups">Nhóm</button>
+          <button type="button" class="seg-btn" data-table="comments">Bình luận</button>
+          <button type="button" class="seg-btn" data-table="group_prices">Giá Group</button>
+        </div>
+        <div id="data-status" class="status info"></div>
+        <div id="data-table" class="table-wrap"></div>
+      </section>
+    </div>
+  </main>
+
+  <div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+  <script src="admin.js" type="module"></script>
+</body>
+</html>

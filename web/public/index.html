@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Group Radar — Bảng dữ liệu</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    /* =====================================================================
+       Group Radar — read-only web dashboard, near-monochrome "Market
+       Terminal" system. Same restrained language as the extension dashboard
+       (không màu mè): graphite neutrals (chroma 0) carry the UI, one quiet
+       warm-sand accent (low chroma ~0.045) marks primary action (takes DARK
+       ink on solid fills), muted green/red only for price meaning, JetBrains
+       Mono on every figure, flat hairline borders — no puffy lifts. OKLCH.
+       ===================================================================== */
+    :root {
+      color-scheme: dark;
+
+      /* ---- Graphite surface ramp (neutral, chroma 0) ---- */
+      --bg: oklch(0.155 0 0);
+      --surface: oklch(0.19 0 0);
+      --surface-2: oklch(0.225 0 0);
+      --surface-3: oklch(0.262 0 0);
+      --ink: oklch(0.96 0 0);
+      --ink-soft: oklch(0.765 0 0);
+      --ink-faint: oklch(0.6 0 0);
+      --line: oklch(0.3 0 0);
+      --line-soft: oklch(0.255 0 0);
+
+      /* ---- Restrained accent — a quiet warm sand, used sparingly ---- */
+      --accent: oklch(0.745 0.045 80);
+      --accent-bright: oklch(0.8 0.05 82);
+      --accent-soft: oklch(0.285 0.014 80);
+      --accent-ink: oklch(0.8 0.04 82);
+      --on-accent: oklch(0.2 0.012 80);
+      --accent-ring: oklch(0.745 0.045 80 / 0.4);
+
+      /* ---- Aliases kept so inline/legacy var(--primary)/var(--ring) resolve ---- */
+      --primary: var(--accent);
+      --primary-hover: var(--accent-bright);
+      --ring: var(--accent-ring);
+
+      /* ---- Semantic state — muted, functional only ---- */
+      --green: oklch(0.72 0.085 150);
+      --red: oklch(0.64 0.115 25);
+      --red-soft: oklch(0.285 0.05 25);
+      --danger: var(--red);
+
+      /* ---- Radius: tight, instrument-like ---- */
+      --r-sm: 6px;
+      --r-md: 9px;
+      --r-lg: 12px;
+
+      /* ---- Motion ---- */
+      --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+      --t-fast: 0.12s;
+      --t-mid: 0.18s;
+
+      /* ---- Type ---- */
+      --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+      --font-display: "Space Grotesk", var(--font);
+      --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo,
+        Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    /* Quiet terminal scrollbar */
+    * { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+    *::-webkit-scrollbar { width: 10px; height: 10px; }
+    *::-webkit-scrollbar-thumb {
+      background: var(--line);
+      border-radius: 99px;
+      border: 3px solid transparent;
+      background-clip: content-box;
+    }
+    *::-webkit-scrollbar-track { background: transparent; }
+
+    ::selection { background: var(--accent-soft); color: var(--ink); }
+
+    /* ---- Topbar: brand bar with an amber signal rail ---- */
+    header.topbar {
+      position: relative;
+      background: var(--surface);
+      color: var(--ink);
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    header.topbar::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--accent);
+    }
+    header.topbar h1 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+    }
+    .userbox {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      color: var(--ink-soft);
+    }
+    #user-email {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--ink);
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px 20px 60px;
+    }
+
+    /* ---- Panels: flat, hairline-bordered ---- */
+    section {
+      background: var(--surface);
+      border: 1px solid var(--line-soft);
+      border-radius: var(--r-lg);
+      padding: 18px 20px;
+      margin-bottom: 18px;
+    }
+    section h2 {
+      margin: 0 0 14px;
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      color: var(--ink);
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 6px;
+      font-weight: 600;
+      color: var(--ink-soft);
+    }
+
+    /* ---- Inputs ---- */
+    input[type="email"],
+    input[type="password"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--r-sm);
+      font-size: 14px;
+      font-family: inherit;
+      margin-bottom: 14px;
+      background: var(--surface-2);
+      color: var(--ink);
+      outline: none;
+      transition: border-color var(--t-fast), box-shadow var(--t-fast);
+    }
+    input::placeholder { color: var(--ink-faint); }
+    input[type="email"]:focus,
+    input[type="password"]:focus,
+    input:focus-visible {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-ring);
+    }
+
+    /* ---- Buttons: solid amber takes dark ink; flat hairline secondary ---- */
+    button {
+      background: var(--accent);
+      color: var(--on-accent);
+      border: 1px solid transparent;
+      border-radius: var(--r-sm);
+      padding: 10px 18px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background var(--t-fast), border-color var(--t-fast),
+        color var(--t-fast);
+    }
+    button:hover { background: var(--accent-bright); }
+    button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
+    button.secondary {
+      background: var(--surface-2);
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+    button.secondary:hover {
+      background: var(--surface-2);
+      border-color: var(--accent);
+      color: var(--accent-ink);
+    }
+
+    #login-card {
+      max-width: 380px;
+      margin: 56px auto;
+    }
+
+    /* ---- Status lines ---- */
+    .status {
+      font-size: 14px;
+      min-height: 18px;
+      margin-top: 8px;
+      color: var(--ink-soft);
+    }
+    .status.error { color: var(--red); }
+    .status.info { color: var(--ink-faint); }
+
+    /* ---- Tables: terminal ledger; figures in mono ---- */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line-soft);
+      padding: 9px 11px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      color: var(--ink-faint);
+      border-bottom: 1px solid var(--line);
+    }
+    /* Numeric columns read in mono with tabular figures */
+    td {
+      font-variant-numeric: tabular-nums;
+    }
+    tbody tr:hover { background: var(--surface-2); }
+    tbody tr:last-child td { border-bottom: none; }
+
+    .total-line {
+      font-family: var(--font-mono);
+      font-feature-settings: "tnum" 1, "zero" 1;
+      font-size: 14px;
+      margin-bottom: 12px;
+      font-weight: 600;
+      color: var(--accent-ink);
+    }
+
+    .hidden { display: none; }
+
+    a { color: var(--accent-ink); text-decoration: none; }
+    a:hover { color: var(--accent-bright); text-decoration: underline; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Group Radar — Bảng dữ liệu</h1>
+    <div id="userbox" class="userbox hidden">
+      <span id="user-email"></span>
+      <button id="logout-btn" class="secondary" type="button">Đăng xuất</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Login -->
+    <section id="login-card">
+      <h2>Đăng nhập</h2>
+      <form id="login-form">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="username" required />
+        <label for="password">Mật khẩu</label>
+        <input id="password" type="password" autocomplete="current-password" required />
+        <button type="submit">Đăng nhập</button>
+      </form>
+      <div id="login-status" class="status"></div>
+    </section>
+
+    <!-- Dashboard (hidden until logged in) -->
+    <div id="dashboard" class="hidden">
+      <section>
+        <h2>Thống kê</h2>
+        <div id="stats-status" class="status info"></div>
+        <div id="stats-total" class="total-line"></div>
+        <div id="stats-table"></div>
+      </section>
+
+      <section>
+        <h2>Giá Group</h2>
+        <div id="prices-status" class="status info"></div>
+        <div id="prices-table"></div>
+      </section>
+
+      <section>
+        <h2>Bài viết</h2>
+        <div id="posts-status" class="status info"></div>
+        <div id="posts-table"></div>
+      </section>
+    </div>
+  </main>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
