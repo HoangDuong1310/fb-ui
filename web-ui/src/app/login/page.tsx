@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ApiError, useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -109,6 +110,16 @@ export default function LoginPage() {
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? "Đang đăng nhập…" : "Đăng nhập"}
             </Button>
+
+            <p className="text-center text-sm text-muted-foreground">
+              Chưa có tài khoản?{" "}
+              <Link
+                href="/register"
+                className="font-medium text-foreground underline underline-offset-4"
+              >
+                Đăng ký
+              </Link>
+            </p>
           </form>
         </CardContent>
       </Card>

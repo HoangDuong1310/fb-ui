@@ -32,6 +32,94 @@ Trình duyệt ──▶ Nginx (443) ──▶ Next.js (web-ui :3000)
 
 ---
 
+## ⭐ Triển khai thực tế trên server này (chạy bằng IP + cổng, CHƯA có domain)
+
+> Phần này ghi lại **đúng cấu hình đã được deploy** trên server hiện tại. Dùng phần này nếu bạn chỉ muốn chạy nhanh bằng `IP:cổng` mà chưa cấu hình domain/Nginx/HTTPS. Các phần 1–11 bên dưới là hướng dẫn tổng quát (bao gồm cả Nginx + HTTPS) để tham khảo khi có domain.
+
+### Thông tin đã cấu hình
+
+| Mục | Giá trị |
+|---|---|
+| IP server | `14.225.206.162` |
+| Frontend (Next.js) | cổng **3000** → truy cập `http://14.225.206.162:3000` |
+| Backend (Express API) | cổng **3300** (chỉ nội bộ, không mở ra ngoài) |
+| Database MySQL | `fb_crawler` (DB riêng, KHÔNG dùng chung với `meow_db` của dự án khác) |
+| User MySQL | `msserver3@127.0.0.1` |
+| Tên process PM2 | `fb-web` (backend), `fb-web-ui` (frontend) |
+
+Luồng request khi chạy bằng IP + cổng:
+
+```
+Trình duyệt ──▶ http://14.225.206.162:3000  (Next.js, web-ui)
+                       │ proxy /api/*  (rewrites trong next.config.ts → API_ORIGIN)
+                       ▼
+                 http://127.0.0.1:3300       (Express, web) ──▶ MySQL (fb_crawler)
+```
+
+Người dùng chỉ cần mở **một cổng 3000**. Backend `3300` nằm sau proxy của Next.js nên không cần mở ra Internet.
+
+### Các file môi trường đã tạo
+
+`web/.env` (backend):
+
+```dotenv
+# DB riêng cho dự án này — tên thật là fb_crawler (KHÔNG dùng meow_db của dự án khác)
+DATABASE_URL="mysql://<db_user>:<db_password>@127.0.0.1:3306/fb_crawler"
+JWT_SECRET="<chuỗi-ngẫu-nhiên-96-ký-tự-đã-sinh-bằng-crypto.randomBytes>"
+JWT_EXPIRES="30d"
+PORT=3300
+ADMIN_EMAIL="admin@example.com"
+```
+
+`web-ui/.env.local` (frontend):
+
+```dotenv
+# Frontend proxy /api/* sang backend nội bộ trên cùng server
+API_ORIGIN="http://127.0.0.1:3300"
+```
+
+> ⚠️ Mật khẩu MySQL chứa ký tự `@` nên phải mã hóa URL thành `%40` trong `DATABASE_URL`, nếu không sẽ parse sai host.
+
+### Các bước đã chạy (tóm tắt để tái lập)
+
+```bash
+# 1. Tạo DB riêng
+sudo mysql -e "CREATE DATABASE IF NOT EXISTS fb_crawler CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+# 2. Sinh JWT secret
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+
+# 3. Tạo web/.env và web-ui/.env.local như trên
+
+# 4. Cài deps + build
+cd web      && npm install --omit=dev
+cd ../web-ui && npm install && npm run build
+
+# 5. Chạy bằng PM2 (NODE_ENV=production để bắt buộc JWT_SECRET)
+cd ../web
+NODE_ENV=production pm2 start npm --name fb-web -- start
+cd ../web-ui
+pm2 start npm --name fb-web-ui -- start
+pm2 save
+
+# 6. Mở cổng 3000 ra ngoài (server dùng UFW; trước đó 3000 đang bị DENY)
+sudo ufw allow 3000/tcp
+
+# 7. Kiểm tra
+curl -i http://127.0.0.1:3300/api/stats        # 401 (chưa có token) = OK
+curl -s -o /dev/null -w "%{http_code}" http://14.225.206.162:3000   # 200 = OK
+```
+
+### Truy cập
+
+Mở trình duyệt vào **`http://14.225.206.162:3000`** → đăng ký tài khoản bằng email trùng với `ADMIN_EMAIL` để có tài khoản admin đầu tiên.
+
+### Khi nào chuyển sang domain + HTTPS
+
+Khi đã có domain, làm tiếp [phần 7](#7-cấu-hình-nginx-file-riêng-không-động-vào-site-khác) (Nginx) và [phần 8](#8-cấp-https-lets-encrypt) (HTTPS). Lúc đó nên **đóng lại cổng 3000** (`sudo ufw delete allow 3000/tcp`) để chỉ truy cập qua Nginx 80/443.
+
+---
+
 ## 0. Kiểm tra trước khi cài (BẮT BUỘC)
 
 Chạy các lệnh sau **trên server** và ghi lại kết quả trước khi quyết định cổng/đường dẫn.

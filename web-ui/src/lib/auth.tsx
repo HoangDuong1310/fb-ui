@@ -35,6 +35,17 @@ interface LoginResponse {
   user: AuthUser;
 }
 
+/**
+ * Phản hồi từ /api/auth/register. Tài khoản mới mặc định ở trạng thái
+ * 'pending' nên backend KHÔNG trả token — chỉ trả cờ pending + message để
+ * client hiển thị "chờ admin duyệt".
+ */
+interface RegisterResponse {
+  pending: boolean;
+  message: string;
+  user: { id: number; email: string; displayName: string | null };
+}
+
 interface AuthContextValue {
   user: AuthUser | null;
   /** Đang khôi phục phiên từ localStorage (tránh nháy UI lúc mount). */
@@ -42,6 +53,15 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isAdmin: boolean;
   login: (email: string, password: string) => Promise<AuthUser>;
+  /**
+   * Đăng ký tài khoản mới. Trả về message từ backend (tài khoản ở trạng thái
+   * 'pending', chưa đăng nhập được cho tới khi admin duyệt).
+   */
+  register: (
+    email: string,
+    password: string,
+    displayName?: string,
+  ) => Promise<RegisterResponse>;
   logout: () => void;
 }
 
@@ -98,6 +118,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data.user;
   }, []);
 
+  const register = useCallback(
+    async (email: string, password: string, displayName?: string) => {
+      // Backend trả 201 + { pending, message, user } và KHÔNG cấp token.
+      // Không tự đăng nhập: tài khoản phải chờ admin duyệt trước.
+      return apiFetch<RegisterResponse>("/api/auth/register", {
+        method: "POST",
+        body: { email, password, displayName },
+      });
+    },
+    [],
+  );
+
   const logout = useCallback(() => {
     setToken(null);
     writeStoredUser(null);
@@ -110,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: user !== null,
     isAdmin: user?.role === "admin",
     login,
+    register,
     logout,
   };
 
