@@ -396,6 +396,16 @@ export async function runMigrations() {
     { name: "role", ddl: "role VARCHAR(20) NOT NULL DEFAULT 'user'" },
     { name: "status", ddl: "status VARCHAR(20) NOT NULL DEFAULT 'pending'" },
   ]);
+
+  // Per-user AI config — each user supplies their OWN OpenAI-compatible key so
+  // the web can generate content server-side without the extension. The key is
+  // stored per row (never a shared server secret); base/model fall back to the
+  // env defaults in config.js when a user leaves them blank.
+  await ensureColumns(pool, "users", [
+    { name: "ai_api_base", ddl: "ai_api_base VARCHAR(255)" },
+    { name: "ai_api_key", ddl: "ai_api_key VARCHAR(255)" },
+    { name: "ai_model", ddl: "ai_model VARCHAR(100)" },
+  ]);
   // Backfill: các tài khoản ĐÃ tồn tại từ trước (DB cũ chưa có cột status) khi
   // ALTER ADD sẽ nhận DEFAULT 'pending' -> sẽ bị khóa oan. Nâng tất cả tài khoản
   // cũ lên 'approved' đúng MỘT lần (chỉ ảnh hưởng hàng đang 'pending' hiện có,

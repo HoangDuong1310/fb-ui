@@ -1,6 +1,14 @@
 import { Router } from "express";
-import { getPool } from "./config.js";
+import { getPool, env } from "./config.js";
 import { hashPassword, verifyPassword, signToken, authRequired } from "./auth.js";
+import {
+  classifyIntent,
+  draftAdvisory,
+  draftConversationReply,
+  spinPostContent,
+  approveAdvisory,
+  analyzePost,
+} from "./ai.js";
 
 export const authRouter = Router();
 
@@ -1437,6 +1445,178 @@ dataRouter.patch("/me/share-prefs", asyncHandler(async (req, res) => {
   } finally {
     conn.release();
   }
+}));
+
+/* ------------------------------ AI CONFIG ------------------------------ */
+
+// Mask a stored API key so the UI can show "a key is set" without ever
+// re-exposing the secret. We keep only a short suffix for recognisability.
+function maskApiKey(key) {
+  if (!key) return "";
+  const s = String(key);
+  if (s.length <= 4) return "••••";
+  return "••••••••" + s.slice(-4);
+}
+
+// GET /api/me/ai-config — the caller's per-user AI settings. The raw key is
+// NEVER returned; instead we expose hasKey + a masked preview. Blank base/model
+// fall back to the server-wide defaults from env so the UI can show what will
+// actually be used.
+dataRouter.get("/me/ai-config", asyncHandler(async (req, res) => {
+  const conn = await getPool().getConnection();
+  try {
+    const [rows] = await conn.query(
+      "SELECT ai_api_base, ai_api_key, ai_model FROM users WHERE id = :id",
+      { id: req.userId }
+    );
+    const row = rows[0] || {};
+    const key = row.ai_api_key || "";
+    res.json({
+      apiBase: row.ai_api_base || "",
+      apiBaseDefault: env.aiApiBase,
+      apiBaseEffective: row.ai_api_base || env.aiApiBase,
+      model: row.ai_model || "",
+      modelDefault: env.aiModel,
+      modelEffective: row.ai_model || env.aiModel,
+      hasKey: !!key,
+      keyMasked: maskApiKey(key),
+    });
+  } finally {
+    conn.release();
+  }
+}));
+
+// PUT /api/me/ai-config — update the caller's AI settings. The key is only
+// written when a non-empty, non-masked value is supplied, so re-saving the form
+// without retyping the key keeps the existing secret. Sending apiKey === "" with
+// an explicit clearKey flag wipes it.
+dataRouter.put("/me/ai-config", asyncHandler(async (req, res) => {
+  const body = req.body || {};
+  const sets = [];
+  const params = { id: req.userId };
+
+  if (typeof body.apiBase === "string") {
+    sets.push("ai_api_base = :apiBase");
+    params.apiBase = body.apiBase.trim().replace(/\/+$/, "");
+  }
+  if (typeof body.model === "string") {
+    sets.push("ai_model = :model");
+    params.model = body.model.trim();
+  }
+  if (body.clearKey === true) {
+    sets.push("ai_api_key = NULL");
+  } else if (
+    typeof body.apiKey === "string" &&
+    body.apiKey.trim() &&
+    !body.apiKey.includes("•")
+  ) {
+    sets.push("ai_api_key = :apiKey");
+    params.apiKey = body.apiKey.trim();
+  }
+
+  const conn = await getPool().getConnection();
+  try {
+    if (sets.length) {
+      await conn.query(
+        `UPDATE users SET ${sets.join(", ")} WHERE id = :id`,
+        params
+      );
+    }
+    const [rows] = await conn.query(
+      "SELECT ai_api_base, ai_api_key, ai_model FROM users WHERE id = :id",
+      { id: req.userId }
+    );
+    const row = rows[0] || {};
+    const key = row.ai_api_key || "";
+    res.json({
+      apiBase: row.ai_api_base || "",
+      apiBaseDefault: env.aiApiBase,
+      apiBaseEffective: row.ai_api_base || env.aiApiBase,
+      model: row.ai_model || "",
+      modelDefault: env.aiModel,
+      modelEffective: row.ai_model || env.aiModel,
+      hasKey: !!key,
+      keyMasked: maskApiKey(key),
+    });
+  } finally {
+    conn.release();
+  }
+}));
+
+/* ------------------------------ AI GENERATION ------------------------------ */
+
+// POST /api/ai/classify — Classify the intent of a text snippet. Returns the
+// parsed selector JSON (intent, language, tone, etc.) produced by the AI model
+// configured for the requesting user.
+dataRouter.post("/ai/classify", asyncHandler(async (req, res) => {
+  const { text } = req.body || {};
+  if (!text || typeof text !== "string" || !text.trim()) {
+    return res.status(400).json({ error: "missing text", message: "Thiếu nội dung cần phân loại." });
+  }
+  const result = await classifyIntent(text.trim(), req.userId);
+  res.json(result);
+}));
+
+// POST /api/ai/draft-advisory — Draft an advisory reply for a post. Expects:
+//   post        { text, url?, author? }  — the original post
+//   products    [{ name, price, url, ... }]  — matched product candidates
+//   intentInfo  { intent, language, tone, ... }  — from classifyIntent (optional)
+dataRouter.post("/ai/draft-advisory", asyncHandler(async (req, res) => {
+  const { post, products, intentInfo } = req.body || {};
+  if (!post || typeof post.text !== "string" || !post.text.trim()) {
+    return res.status(400).json({ error: "missing post", message: "Thiếu nội dung bài viết cần tư vấn." });
+  }
+  const result = await draftAdvisory(post, products || [], intentInfo || null, req.userId);
+  res.json(result);
+}));
+
+// POST /api/ai/draft-conversation-reply — Draft a reply for an existing
+// conversation thread. Expects:
+//   conv          { text, myComment?, replies? }  — conversation context
+//   opts          { tone?, language?, maxLen? }   — optional overrides
+dataRouter.post("/ai/draft-conversation-reply", asyncHandler(async (req, res) => {
+  const { conv, opts } = req.body || {};
+  if (!conv || typeof conv.text !== "string" || !conv.text.trim()) {
+    return res.status(400).json({ error: "missing conv", message: "Thiếu nội dung hội thoại cần trả lời." });
+  }
+  const result = await draftConversationReply(conv, opts || {}, req.userId);
+  res.json(result);
+}));
+
+// POST /api/ai/spin-post — Rewrite / spin a post's content using AI. Expects:
+//   text      string  — original post text
+//   options   { tone?, style?, maxLen?, ... }  — optional spin parameters
+dataRouter.post("/ai/spin-post", asyncHandler(async (req, res) => {
+  const { text, options } = req.body || {};
+  if (!text || typeof text !== "string" || !text.trim()) {
+    return res.status(400).json({ error: "missing text", message: "Thiếu nội dung cần viết lại." });
+  }
+  const result = await spinPostContent({ text: text.trim(), ...(options || {}) }, req.userId);
+  res.json(result);
+}));
+
+// POST /api/ai/analyze — Full analysis pipeline for a post: classify intent,
+// search products, draft advisory, and save to DB. Expects:
+//   post  { text, url?, author?, postId? }
+dataRouter.post("/ai/analyze", asyncHandler(async (req, res) => {
+  const { post } = req.body || {};
+  if (!post || typeof post.text !== "string" || !post.text.trim()) {
+    return res.status(400).json({ error: "missing post", message: "Thiếu nội dung bài viết cần phân tích." });
+  }
+  const result = await analyzePost(post, req.userId);
+  res.json(result);
+}));
+
+// POST /api/ai/approve-advisory — Approve a drafted advisory and create a
+// posting job for the extension to pick up. Expects:
+//   postId  string  — the advisory's post ID
+dataRouter.post("/ai/approve-advisory", asyncHandler(async (req, res) => {
+  const { postId } = req.body || {};
+  if (!postId) {
+    return res.status(400).json({ error: "missing postId", message: "Thiếu ID bài viết cần duyệt." });
+  }
+  const result = await approveAdvisory(postId);
+  res.json(result);
 }));
 
 // ---------------------------------------------------------------------------

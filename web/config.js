@@ -34,6 +34,11 @@ export const env = {
   port: Number(process.env.PORT || 3300),
   // Email của admin đầu tiên — tài khoản này sẽ tự được nâng lên role 'admin' + status 'approved' khi chạy migration
   adminEmail: (process.env.ADMIN_EMAIL || "").trim().toLowerCase(),
+  // AI defaults — chỉ là fallback cho base URL + model khi người dùng để trống.
+  // API KEY KHÔNG nằm ở đây: mỗi người dùng tự cấu hình key riêng (lưu ở cột
+  // users.ai_api_key), không dùng chung một secret phía server.
+  aiApiBase: (process.env.AI_API_BASE || "https://danglamgiau.com/v1").replace(/\/+$/, ""),
+  aiModel: process.env.AI_MODEL || "gpt-5.5",
 };
 
 export async function ensureDatabase() {
