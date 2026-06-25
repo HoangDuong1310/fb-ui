@@ -128,3 +128,22 @@ export interface AdminUserOverview {
   advisories: AdminAdvisory[];
   groupPrices: GroupPrice[];
 }
+
+export interface RemoteCommand {
+  id: number;
+  type: string;
+  payload: Record<string, unknown> | null;
+  status: string;
+  result: Record<string, unknown> | null;
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface RemoteCommandsResponse {
+  commands: RemoteCommand[];
+  total: number;
+  page: number;
+  limit: number;
+}

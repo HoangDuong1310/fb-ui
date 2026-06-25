@@ -1,4 +1,4 @@
-# Group Radar — Web Dashboard
+WD# Group Radar — Web Dashboard
 
 Tài liệu này mô tả kiến trúc web của dự án sau khi tách thành **hai ứng dụng** chạy song song. Cả hai nằm trong thư mục `server/` của repo:
 

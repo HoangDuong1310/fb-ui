@@ -1,23 +1,24 @@
 /**
- * Cấu hình điều hướng sidebar — nhóm theo "việc cần làm" (DESIGN.md).
+ * nav.ts — định nghĩa cấu trúc điều hướng của dashboard.
  *
- * Mỗi mục có cờ adminOnly để ẩn khỏi user thường. Icon dùng lucide-react
- * (đi kèm shadcn). Đường dẫn khớp với cấu trúc app router trong (dashboard)/.
+ * NAV_GROUPS được AppSidebar đọc để dựng menu. Mỗi mục có thể đánh dấu
+ * `adminOnly` để chỉ hiển thị với tài khoản admin.
  */
 
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
-  Users2,
+  Users,
   FileText,
-  Tags,
-  ShieldCheck,
+  Tag,
   Database,
+  UserCog,
+  Terminal,
 } from "lucide-react";
 
 export interface NavItem {
-  title: string;
   href: string;
+  title: string;
   icon: LucideIcon;
   adminOnly?: boolean;
 }
@@ -29,32 +30,25 @@ export interface NavGroup {
 
 export const NAV_GROUPS: NavGroup[] = [
   {
-    label: "Khám phá",
+    label: "Dữ liệu",
     items: [
-      { title: "Tổng quan", href: "/", icon: LayoutDashboard },
-      { title: "Nhóm", href: "/groups", icon: Users2 },
-      { title: "Bài viết", href: "/posts", icon: FileText },
+      { href: "/", title: "Tổng quan", icon: LayoutDashboard },
+      { href: "/groups", title: "Nhóm", icon: Users },
+      { href: "/posts", title: "Bài viết", icon: FileText },
+      { href: "/group-prices", title: "Giá theo nhóm", icon: Tag },
     ],
   },
   {
-    label: "Giá & Kho",
-    items: [{ title: "Giá theo nhóm", href: "/group-prices", icon: Tags }],
+    label: "Điều khiển",
+    items: [
+      { href: "/remote-commands", title: "Lệnh từ Web", icon: Terminal },
+    ],
   },
   {
-    label: "Hệ thống",
+    label: "Quản trị",
     items: [
-      {
-        title: "Quản lý người dùng",
-        href: "/admin/users",
-        icon: ShieldCheck,
-        adminOnly: true,
-      },
-      {
-        title: "Sửa dữ liệu",
-        href: "/admin/data",
-        icon: Database,
-        adminOnly: true,
-      },
+      { href: "/admin/data", title: "Sửa dữ liệu", icon: Database, adminOnly: true },
+      { href: "/admin/users", title: "Quản lý người dùng", icon: UserCog, adminOnly: true },
     ],
   },
 ];

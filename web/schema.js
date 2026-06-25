@@ -150,6 +150,22 @@ const TABLES = [
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_keyword_type (keyword, type)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+  `CREATE TABLE IF NOT EXISTS remote_commands (
+    id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id       INT UNSIGNED NOT NULL,
+    type          VARCHAR(64)  NOT NULL,
+    payload       JSON         NOT NULL,
+    status        ENUM('pending','running','completed','failed','expired') NOT NULL DEFAULT 'pending',
+    result        JSON         DEFAULT NULL,
+    error         TEXT         DEFAULT NULL,
+    created_by    INT UNSIGNED DEFAULT NULL,
+    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at    DATETIME     DEFAULT NULL,
+    completed_at  DATETIME     DEFAULT NULL,
+    INDEX idx_pending_user (status, user_id, created_at),
+    CONSTRAINT fk_rc_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 ];
 
 const SELL_SIGNALS = [
