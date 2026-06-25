@@ -153,13 +153,13 @@ const TABLES = [
 
   `CREATE TABLE IF NOT EXISTS remote_commands (
     id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    user_id       INT UNSIGNED NOT NULL,
+    user_id       INT          NOT NULL,
     type          VARCHAR(64)  NOT NULL,
     payload       JSON         NOT NULL,
     status        ENUM('pending','running','completed','failed','expired') NOT NULL DEFAULT 'pending',
     result        JSON         DEFAULT NULL,
     error         TEXT         DEFAULT NULL,
-    created_by    INT UNSIGNED DEFAULT NULL,
+    created_by    INT          DEFAULT NULL,
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     started_at    DATETIME     DEFAULT NULL,
     completed_at  DATETIME     DEFAULT NULL,
