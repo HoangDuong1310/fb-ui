@@ -1258,6 +1258,17 @@ dataRouter.get("/group-prices", asyncHandler(async (req, res) => {
   res.json({ groupPrices: rows.map(mapGroupPriceRow) });
 }));
 
+// Chuẩn hóa name/seller_name trước khi đưa vào khóa tự nhiên uq_gp_line.
+// Collation utf8mb4_unicode_ci đã coi khác hoa/thường & khác dấu là bằng nhau,
+// nên chỉ cần gộp khoảng trắng thừa + trim để mọi bản crawl của nhiều người
+// hội tụ về cùng một khóa, tránh đẻ ra dòng giá trùng lặp ở mọi nơi. Giữ
+// nguyên hoa/thường để hiển thị đẹp (khóa vẫn gộp đúng nhờ collation).
+function normalizeGpKeyText(v) {
+  if (v == null) return null;
+  const s = String(v).replace(/\s+/g, " ").trim();
+  return s === "" ? null : s;
+}
+
 // POST /api/group-prices — bulk insert extracted price rows. Each row records the
 // caller and inherits share_group_prices from their share_group_prices_default.
 dataRouter.post("/group-prices", asyncHandler(async (req, res) => {
@@ -1299,12 +1310,12 @@ dataRouter.post("/group-prices", asyncHandler(async (req, res) => {
            share_group_prices = VALUES(share_group_prices)`,
         {
           postId: it.postId ?? null,
-          name: it.name ?? null,
+          name: normalizeGpKeyText(it.name),
           price: it.price ?? null,
           condition: it.condition ?? null,
           warranty: it.warranty ?? null,
           category: it.category ?? null,
-          sellerName: it.sellerName ?? null,
+          sellerName: normalizeGpKeyText(it.sellerName),
           sellerProfile: it.sellerProfile ?? null,
           groupId: it.groupId ?? null,
           postedAt: it.postedAt ?? null,
