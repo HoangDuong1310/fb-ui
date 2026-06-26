@@ -30,7 +30,7 @@ export default function AutocommentPage() {
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!text.trim()) {
-        toast.error("Enter the comment to rewrite first.");
+        toast.error("Hãy nhập bình luận cần viết lại trước.");
         return;
       }
       setSpinning(true);
@@ -48,9 +48,9 @@ export default function AutocommentPage() {
         );
         const res = await Promise.all(promises);
         setResults(res);
-        toast.success(`Generated ${res.length} comment variants`);
+        toast.success(`Đã tạo ${res.length} biến thể bình luận`);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Spin failed");
+        toast.error(err instanceof Error ? err.message : "Tạo bình luận thất bại");
       } finally {
         setSpinning(false);
       }
@@ -60,25 +60,25 @@ export default function AutocommentPage() {
 
   const copyOne = useCallback((content: string) => {
     navigator.clipboard.writeText(content).then(
-      () => toast.success("Copied"),
-      () => toast.error("Copy failed"),
+      () => toast.success("Đã sao chép"),
+      () => toast.error("Sao chép thất bại"),
     );
   }, []);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Auto Comment"
-        description="Generate multiple comment variants from your text using AI."
+        title="Bình luận tự động"
+        description="Tạo nhiều biến thể bình luận từ nội dung của bạn bằng AI."
       />
 
       <form onSubmit={handleSpin} className="space-y-4 rounded-lg border p-6">
         <div className="space-y-2">
-          <Label htmlFor="comment-text">Comment Content</Label>
+          <Label htmlFor="comment-text">Nội dung bình luận</Label>
           <Textarea
             id="comment-text"
             rows={4}
-            placeholder="Type or paste the original comment…"
+            placeholder="Nhập hoặc dán bình luận gốc…"
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
@@ -86,45 +86,45 @@ export default function AutocommentPage() {
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="space-y-2">
-            <Label>Tone</Label>
+            <Label>Giọng điệu</Label>
             <Select value={tone} onValueChange={setTone}>
               <SelectTrigger>
-                <SelectValue placeholder="Tone" />
+                <SelectValue placeholder="Giọng điệu" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="friendly">Friendly</SelectItem>
-                <SelectItem value="professional">Professional</SelectItem>
-                <SelectItem value="casual">Casual</SelectItem>
-                <SelectItem value="enthusiastic">Enthusiastic</SelectItem>
+                <SelectItem value="friendly">Thân thiện</SelectItem>
+                <SelectItem value="professional">Chuyên nghiệp</SelectItem>
+                <SelectItem value="casual">Thoải mái</SelectItem>
+                <SelectItem value="enthusiastic">Nhiệt tình</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="space-y-2">
-            <Label>Language</Label>
+            <Label>Ngôn ngữ</Label>
             <Select value={language} onValueChange={setLanguage}>
               <SelectTrigger>
-                <SelectValue placeholder="Language" />
+                <SelectValue placeholder="Ngôn ngữ" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="vi">Vietnamese</SelectItem>
-                <SelectItem value="en">English</SelectItem>
-                <SelectItem value="auto">Auto Detect</SelectItem>
+                <SelectItem value="vi">Tiếng Việt</SelectItem>
+                <SelectItem value="en">Tiếng Anh</SelectItem>
+                <SelectItem value="auto">Tự động</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="space-y-2">
-            <Label>Variants</Label>
+            <Label>Số biến thể</Label>
             <Select value={numVariants} onValueChange={setNumVariants}>
               <SelectTrigger>
-                <SelectValue placeholder="How many" />
+                <SelectValue placeholder="Bao nhiêu" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="1">1 variant</SelectItem>
-                <SelectItem value="2">2 variants</SelectItem>
-                <SelectItem value="3">3 variants</SelectItem>
-                <SelectItem value="5">5 variants</SelectItem>
+                <SelectItem value="1">1 biến thể</SelectItem>
+                <SelectItem value="2">2 biến thể</SelectItem>
+                <SelectItem value="3">3 biến thể</SelectItem>
+                <SelectItem value="5">5 biến thể</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -132,14 +132,14 @@ export default function AutocommentPage() {
 
         <Button type="submit" disabled={spinning || !text.trim()}>
           <MessageSquare className="mr-2 h-4 w-4" />
-          {spinning ? "Generating…" : "Generate Comments"}
+          {spinning ? "Đang tạo…" : "Tạo bình luận"}
         </Button>
       </form>
 
       {results.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-sm font-medium">
-            Generated Variants ({results.length})
+            Biến thể đã tạo ({results.length})
           </h3>
           {results.map((r, i) => (
             <div

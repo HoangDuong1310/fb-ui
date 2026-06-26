@@ -22,19 +22,19 @@ export default function SourcesPage() {
   const sources = data?.sources ?? [];
 
   const handleAdd = useCallback(async () => {
-    if (!newId.trim()) return toast.error("Nhap ID nguon");
+    if (!newId.trim()) return toast.error("Nhập ID nguồn");
     setSaving(true);
     try {
       await apiFetch("/api/sources", {
         method: "POST",
         body: { id: newId.trim(), config: { url: newUrl.trim() || undefined } },
       });
-      toast.success("Da them nguon");
+      toast.success("Đã thêm nguồn");
       setNewId("");
       setNewUrl("");
       reload();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Them that bai");
+      toast.error(e instanceof Error ? e.message : "Thêm thất bại");
     } finally {
       setSaving(false);
     }
@@ -43,31 +43,31 @@ export default function SourcesPage() {
   const handleDelete = useCallback(async (id: string) => {
     try {
       await apiFetch(`/api/sources/${encodeURIComponent(id)}`, { method: "DELETE" });
-      toast.success("Da xoa nguon");
+      toast.success("Đã xóa nguồn");
       reload();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Xoa that bai");
+      toast.error(e instanceof Error ? e.message : "Xóa thất bại");
     }
   }, [reload]);
 
   return (
     <div className="p-6 space-y-6">
       <PageHeader
-        title="Nguon du lieu"
-        description="Quan ly cac nguon dong bo san pham."
+        title="Nguồn dữ liệu"
+        description="Quản lý các nguồn đồng bộ sản phẩm."
       />
 
       <div className="flex gap-3 items-end flex-wrap">
         <div className="min-w-[140px]">
-          <Label htmlFor="sid">ID nguon</Label>
+          <Label htmlFor="sid">ID nguồn</Label>
           <Input id="sid" placeholder="vidu: cellphones" value={newId} onChange={(e) => setNewId(e.target.value)} />
         </div>
         <div className="flex-1 min-w-[200px]">
-          <Label htmlFor="surl">URL (tuy chon)</Label>
+          <Label htmlFor="surl">URL (tùy chọn)</Label>
           <Input id="surl" placeholder="https://..." value={newUrl} onChange={(e) => setNewUrl(e.target.value)} />
         </div>
         <Button onClick={handleAdd} disabled={saving || !newId.trim()}>
-          <Plus className="h-4 w-4 mr-1" /> Them
+          <Plus className="h-4 w-4 mr-1" /> Thêm
         </Button>
       </div>
 
@@ -78,7 +78,7 @@ export default function SourcesPage() {
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}
         </div>
       ) : sources.length === 0 ? (
-        <EmptyState title="Chua co nguon" description="Them nguon de bat dau dong bo san pham." />
+        <EmptyState title="Chưa có nguồn" description="Thêm nguồn để bắt đầu đồng bộ sản phẩm." />
       ) : (
         <div className="space-y-2">
           {sources.map((s) => (

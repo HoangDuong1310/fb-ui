@@ -42,122 +42,122 @@ export interface NavGroup {
 
 export const NAV_GROUPS: NavGroup[] = [
   {
-    label: "Overview",
+    label: "Tổng quan",
     items: [
       {
         href: "/",
-        title: "Tong quan",
+        title: "Tổng quan",
         icon: LayoutDashboard,
       },
       {
         href: "/groups",
-        title: "Nhom",
+        title: "Nhóm",
         icon: Users,
       },
       {
         href: "/posts",
-        title: "Bai viet",
+        title: "Bài viết",
         icon: FileText,
       },
       {
         href: "/group-prices",
-        title: "Gia theo nhom",
+        title: "Giá theo nhóm",
         icon: Tag,
       },
     ],
   },
   {
-    label: "AI & Auto",
+    label: "AI & Tự động",
     items: [
       {
         href: "/autopost",
-        title: "Dang bai tu dong",
+        title: "Đăng bài tự động",
         icon: Send,
       },
       {
         href: "/autocomment",
-        title: "Binh luan tu dong",
+        title: "Bình luận tự động",
         icon: MessageCircle,
       },
       {
         href: "/advisory",
-        title: "Tu van ban hang",
+        title: "Tư vấn bán hàng",
         icon: MessageSquare,
       },
       {
         href: "/conversations",
-        title: "Cuoc tro chuyen",
+        title: "Cuộc trò chuyện",
         icon: MessagesSquare,
       },
     ],
   },
   {
-    label: "Manage",
+    label: "Quản lý",
     items: [
       {
         href: "/products",
-        title: "San pham",
+        title: "Sản phẩm",
         icon: Package,
       },
       {
         href: "/mystore",
-        title: "Cua hang cua toi",
+        title: "Cửa hàng của tôi",
         icon: Store,
       },
       {
         href: "/build",
-        title: "Xay bo",
+        title: "Xây bộ",
         icon: Hammer,
       },
       {
         href: "/sources",
-        title: "Nguon du lieu",
+        title: "Nguồn dữ liệu",
         icon: Globe,
       },
       {
         href: "/keywords",
-        title: "Tu khoa",
+        title: "Từ khóa",
         icon: KeyRound,
       },
       {
         href: "/sharing",
-        title: "Chia se du lieu",
+        title: "Chia sẻ dữ liệu",
         icon: Share2,
       },
       {
         href: "/profiles",
-        title: "Ho so nganh",
+        title: "Hồ sơ ngành",
         icon: FileSignature,
       },
     ],
   },
   {
-    label: "Control",
+    label: "Điều khiển",
     items: [
       {
         href: "/remote-commands",
-        title: "Lenh tu Web",
+        title: "Lệnh từ Web",
         icon: Terminal,
       },
       {
         href: "/settings",
-        title: "Cai dat",
+        title: "Cài đặt",
         icon: Settings,
       },
     ],
   },
   {
-    label: "Admin",
+    label: "Quản trị",
     items: [
       {
         href: "/admin/data",
-        title: "Sua du lieu",
+        title: "Sửa dữ liệu",
         icon: Database,
         adminOnly: true,
       },
       {
         href: "/admin/users",
-        title: "Quan ly nguoi dung",
+        title: "Quản lý người dùng",
         icon: UserCog,
         adminOnly: true,
       },

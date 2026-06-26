@@ -446,6 +446,26 @@ export async function runMigrations() {
   } catch (e) {
     // Bảng/cột chưa có (DB mới) -> CREATE TABLE ở trên đã đặt đúng MEDIUMTEXT.
   }
+  // Bảng advisories bản schema gốc CHỈ có content/status/used_products/...; nhưng
+  // server-side analyzePost/generateAdvisories (ai.js saveAdvisory) ghi thêm rất
+  // nhiều cột ngữ cảnh (group_name, permalink, author_name, post_text, intent,
+  // needs, budget, reply, confidence, source, job_id, sent_at). Thiếu cột ->
+  // INSERT văng "Unknown column". ensureColumns backfill idempotent những cột này.
+  await ensureColumns(pool, "advisories", [
+    { name: "group_id", ddl: "group_id VARCHAR(64)" },
+    { name: "group_name", ddl: "group_name VARCHAR(255)" },
+    { name: "permalink", ddl: "permalink TEXT" },
+    { name: "author_name", ddl: "author_name VARCHAR(255)" },
+    { name: "post_text", ddl: "post_text MEDIUMTEXT" },
+    { name: "intent", ddl: "intent VARCHAR(32)" },
+    { name: "needs", ddl: "needs TEXT" },
+    { name: "budget", ddl: "budget BIGINT" },
+    { name: "reply", ddl: "reply MEDIUMTEXT" },
+    { name: "confidence", ddl: "confidence VARCHAR(16)" },
+    { name: "source", ddl: "source VARCHAR(32)" },
+    { name: "job_id", ddl: "job_id VARCHAR(64)" },
+    { name: "sent_at", ddl: "sent_at BIGINT" },
+  ]);
   // Seed base keyword lists for ALL filter categories from KEYWORD_SEEDS:
   //   sell    -> phễu trích giá group + "Người bán" của Lọc thông minh.
   //   buy     -> KHÁCH CẦN MUA (Lọc thông minh).

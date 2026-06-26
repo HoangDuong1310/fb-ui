@@ -70,7 +70,7 @@ export default function SettingsPage() {
         if (clearKey) body.clearKey = true;
 
         if (Object.keys(body).length === 0) {
-          toast.info("No changes to save");
+          toast.info("Không có thay đổi nào để lưu");
           setSavingAi(false);
           return;
         }
@@ -81,10 +81,10 @@ export default function SettingsPage() {
         });
         setApiKey("");
         setClearKey(false);
-        toast.success("AI configuration saved");
+        toast.success("Đã lưu cấu hình AI");
         reloadAi();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Failed to save AI config");
+        toast.error(err instanceof Error ? err.message : "Lưu cấu hình AI thất bại");
       } finally {
         setSavingAi(false);
       }
@@ -106,10 +106,10 @@ export default function SettingsPage() {
             share_group_prices_default: shareGroupPrices,
           },
         });
-        toast.success("Share preferences saved");
+        toast.success("Đã lưu tùy chọn chia sẻ");
         reloadShare();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Failed to save preferences");
+        toast.error(err instanceof Error ? err.message : "Lưu tùy chọn chia sẻ thất bại");
       } finally {
         setSavingShare(false);
       }
@@ -123,8 +123,8 @@ export default function SettingsPage() {
   return (
     <div>
       <PageHeader
-        title="Settings"
-        description="Manage your AI API keys and sharing preferences."
+        title="Cài đặt"
+        description="Quản lý khóa API AI và tùy chọn chia sẻ của bạn."
         actions={
           <Button
             variant="outline"
@@ -136,7 +136,7 @@ export default function SettingsPage() {
             disabled={loading}
           >
             <RefreshCw className="mr-1.5 size-3.5" />
-            Refresh
+            Làm mới
           </Button>
         }
       />
@@ -156,16 +156,16 @@ export default function SettingsPage() {
           <form onSubmit={handleSaveAi} className="space-y-4 rounded-[var(--radius-lg)] border border-border p-6">
             <div className="flex items-center gap-2 text-lg font-semibold">
               <Cpu className="size-5" />
-              AI Configuration
+              Cấu hình AI
             </div>
             <p className="text-sm text-muted-foreground">
-              Configure your personal AI provider. All AI content generation uses these settings.
+              Cấu hình nhà cung cấp AI cá nhân. Tất cả nội dung tạo bằng AI đều dùng các cài đặt này.
             </p>
 
             <div className="space-y-2">
               <Label htmlFor="apiBase">
                 <Globe className="mr-1 inline-block size-3.5" />
-                API Base URL
+                URL gốc API
               </Label>
               <Input
                 id="apiBase"
@@ -178,7 +178,7 @@ export default function SettingsPage() {
             <div className="space-y-2">
               <Label htmlFor="model">
                 <KeyRound className="mr-1 inline-block size-3.5" />
-                Model
+                Mô hình
               </Label>
               <Input
                 id="model"
@@ -189,11 +189,11 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="apiKey">API Key</Label>
+              <Label htmlFor="apiKey">Khóa API</Label>
               <Input
                 id="apiKey"
                 type="password"
-                placeholder={aiData?.hasKey ? "•••••••• (key set)" : "sk-..."}
+                placeholder={aiData?.hasKey ? "•••••••• (đã đặt khóa)" : "sk-..."}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
               />
@@ -208,22 +208,22 @@ export default function SettingsPage() {
                 className="size-4"
               />
               <Label htmlFor="clearKey" className="text-sm text-muted-foreground">
-                Remove saved API key
+                Xóa khóa API đã lưu
               </Label>
             </div>
 
             {aiData && (
               <div className="rounded-md bg-muted/50 p-3 text-sm space-y-1">
-                <p className="font-medium">Effective settings</p>
-                <p>API Base: <code className="text-xs">{aiData.apiBaseEffective}</code></p>
-                <p>Model: <code className="text-xs">{aiData.modelEffective}</code></p>
-                <p>Key: {aiData.hasKey ? <span className="text-green-600 dark:text-green-400">Configured</span> : <span className="text-destructive">Not set</span>}</p>
+                <p className="font-medium">Cài đặt đang dùng</p>
+                <p>URL gốc API: <code className="text-xs">{aiData.apiBaseEffective}</code></p>
+                <p>Mô hình: <code className="text-xs">{aiData.modelEffective}</code></p>
+                <p>Khóa: {aiData.hasKey ? <span className="text-green-600 dark:text-green-400">Đã cấu hình</span> : <span className="text-destructive">Chưa đặt</span>}</p>
               </div>
             )}
 
             <Button type="submit" disabled={savingAi}>
               <Save className="mr-1.5 size-3.5" />
-              {savingAi ? "Saving..." : "Save AI Config"}
+              {savingAi ? "Đang lưu..." : "Lưu cấu hình AI"}
             </Button>
           </form>
 
@@ -231,16 +231,16 @@ export default function SettingsPage() {
           <form onSubmit={handleSaveShare} className="space-y-4 rounded-[var(--radius-lg)] border border-border p-6">
             <div className="flex items-center gap-2 text-lg font-semibold">
               <Share2 className="size-5" />
-              Share Preferences
+              Tùy chọn chia sẻ
             </div>
             <p className="text-sm text-muted-foreground">
-              Choose which data types are shared by default with other users.
+              Chọn loại dữ liệu được chia sẻ mặc định với người dùng khác.
             </p>
 
             {[
-              { label: "Crawled posts", checked: shareCrawled, onChange: setShareCrawled },
-              { label: "Commented posts", checked: shareCommented, onChange: setShareCommented },
-              { label: "Group prices", checked: shareGroupPrices, onChange: setShareGroupPrices },
+              { label: "Bài viết đã thu thập", checked: shareCrawled, onChange: setShareCrawled },
+              { label: "Bài viết đã bình luận", checked: shareCommented, onChange: setShareCommented },
+              { label: "Giá nhóm", checked: shareGroupPrices, onChange: setShareGroupPrices },
             ].map((item) => (
               <div key={item.label} className="flex items-center gap-2">
                 <input
@@ -255,7 +255,7 @@ export default function SettingsPage() {
 
             <Button type="submit" disabled={savingShare}>
               <Save className="mr-1.5 size-3.5" />
-              {savingShare ? "Saving..." : "Save Preferences"}
+              {savingShare ? "Đang lưu..." : "Lưu tùy chọn"}
             </Button>
           </form>
         </div>

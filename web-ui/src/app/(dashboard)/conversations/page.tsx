@@ -28,10 +28,18 @@ import {
 type Tab = "watching" | "replied" | "drafted" | "closed" | "all";
 
 const STATUS_LABEL: Record<string, string> = {
-  watching: "Watching",
-  replied: "Has reply",
-  drafted: "Drafted",
-  closed: "Closed",
+  watching: "Đang theo dõi",
+  replied: "Có phản hồi",
+  drafted: "Đã soạn thảo",
+  closed: "Đã đóng",
+};
+
+const TAB_LABEL: Record<Tab, string> = {
+  watching: "Đang theo dõi",
+  replied: "Có phản hồi",
+  drafted: "Đã soạn thảo",
+  closed: "Đã đóng",
+  all: "Tất cả",
 };
 
 export default function ConversationsPage() {
@@ -70,9 +78,9 @@ export default function ConversationsPage() {
           },
         });
         setDraftResults((prev) => ({ ...prev, [conv.id]: res }));
-        toast.success("Reply drafted");
+        toast.success("Đã soạn phản hồi");
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Draft failed");
+        toast.error(err instanceof Error ? err.message : "Soạn phản hồi thất bại");
       } finally {
         setDraftingId(null);
       }
@@ -84,16 +92,16 @@ export default function ConversationsPage() {
     const draft = draftResults[convId];
     if (!draft?.content) return;
     navigator.clipboard.writeText(draft.content).then(
-      () => toast.success("Copied draft"),
-      () => toast.error("Copy failed"),
+      () => toast.success("Đã sao chép bản nháp"),
+      () => toast.error("Sao chép thất bại"),
     );
   }, [draftResults]);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Conversations"
-        description="Track comment replies and draft AI-powered responses for customer conversations."
+        title="Cuộc trò chuyện"
+        description="Theo dõi phản hồi bình luận và soạn câu trả lời bằng AI cho các cuộc trò chuyện với khách hàng."
       />
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg border p-4">
@@ -104,36 +112,35 @@ export default function ConversationsPage() {
               variant={tab === t ? "secondary" : "ghost"}
               size="sm"
               onClick={() => setTab(t)}
-              className="capitalize"
             >
-              {t}
+              {TAB_LABEL[t]}
             </Button>
           ))}
         </div>
         <div className="ml-auto flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <Label className="text-xs">Tone</Label>
+            <Label className="text-xs">Giọng điệu</Label>
             <Select value={tone} onValueChange={setTone}>
               <SelectTrigger className="w-[120px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="friendly">Friendly</SelectItem>
-                <SelectItem value="professional">Professional</SelectItem>
-                <SelectItem value="casual">Casual</SelectItem>
+                <SelectItem value="friendly">Thân thiện</SelectItem>
+                <SelectItem value="professional">Chuyên nghiệp</SelectItem>
+                <SelectItem value="casual">Thoải mái</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="flex items-center gap-2">
-            <Label className="text-xs">Language</Label>
+            <Label className="text-xs">Ngôn ngữ</Label>
             <Select value={language} onValueChange={setLanguage}>
               <SelectTrigger className="w-[120px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="vi">Vietnamese</SelectItem>
-                <SelectItem value="en">English</SelectItem>
-                <SelectItem value="auto">Auto</SelectItem>
+                <SelectItem value="vi">Tiếng Việt</SelectItem>
+                <SelectItem value="en">Tiếng Anh</SelectItem>
+                <SelectItem value="auto">Tự động</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -143,13 +150,13 @@ export default function ConversationsPage() {
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {loading && (
-        <p className="text-sm text-muted-foreground">Loading conversations…</p>
+        <p className="text-sm text-muted-foreground">Đang tải cuộc trò chuyện…</p>
       )}
 
       {!loading && conversations.length === 0 && (
         <EmptyState
-          title="No conversations"
-          description="No tracked conversations yet. Conversations appear when someone replies to your comments."
+          title="Chưa có cuộc trò chuyện"
+          description="Chưa có cuộc trò chuyện nào được theo dõi. Cuộc trò chuyện sẽ xuất hiện khi có người phản hồi bình luận của bạn."
         />
       )}
 
@@ -170,24 +177,24 @@ export default function ConversationsPage() {
 
             {conv.postText && (
               <p className="text-xs text-muted-foreground">
-                <span className="font-medium">Post: </span>
+                <span className="font-medium">Bài viết: </span>
                 {conv.postText.slice(0, 120)}…
               </p>
             )}
 
             {conv.myComment && (
               <p className="text-xs text-muted-foreground">
-                <span className="font-medium">My comment: </span>
+                <span className="font-medium">Bình luận của tôi: </span>
                 {conv.myComment.slice(0, 120)}
               </p>
             )}
 
             {conv.replies.length > 0 && (
               <div className="space-y-1">
-                <span className="text-xs font-medium">Replies ({conv.replies.length})</span>
+                <span className="text-xs font-medium">Phản hồi ({conv.replies.length})</span>
                 {conv.replies.slice(-3).map((r, i) => (
                   <p key={i} className="pl-3 text-xs text-muted-foreground border-l-2">
-                    <span className="font-medium">{r.author ?? "Unknown"}</span>:{" "}
+                    <span className="font-medium">{r.author ?? "Không rõ"}</span>:{" "}
                     {(r.text ?? "").slice(0, 150)}
                   </p>
                 ))}
@@ -202,12 +209,12 @@ export default function ConversationsPage() {
                 disabled={draftingId === conv.id}
               >
                 <Bot className="mr-1 h-3.5 w-3.5" />
-                {draftingId === conv.id ? "Drafting…" : "Draft Reply"}
+                {draftingId === conv.id ? "Đang soạn…" : "Soạn phản hồi"}
               </Button>
               {draft && (
                 <Button size="sm" variant="ghost" onClick={() => copyDraft(conv.id)}>
                   <CheckCircle className="mr-1 h-3.5 w-3.5" />
-                  Copy Draft
+                  Sao chép bản nháp
                 </Button>
               )}
             </div>

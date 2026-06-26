@@ -29,10 +29,10 @@ export default function MyStorePage() {
     setDeleting(id);
     try {
       await apiFetch(`/api/products/${encodeURIComponent(id)}`, { method: "DELETE" });
-      toast.success("Da xoa san pham");
+      toast.success("Đã xóa sản phẩm");
       reload();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Xoa that bai");
+      toast.error(e instanceof Error ? e.message : "Xóa thất bại");
     } finally {
       setDeleting(null);
     }
@@ -41,9 +41,9 @@ export default function MyStorePage() {
   return (
     <div className="p-6 space-y-6">
       <PageHeader
-        title="Cua hang cua toi"
-        description="San pham ban da tu them vao kho (source=mystore)."
-        actions={<Button variant="outline" onClick={() => reload()}>Lam moi</Button>}
+        title="Cửa hàng của tôi"
+        description="Sản phẩm bạn đã tự thêm vào kho (source=mystore)."
+        actions={<Button variant="outline" onClick={() => reload()}>Làm mới</Button>}
       />
 
       {error && <ErrorState message={error} />}
@@ -56,8 +56,8 @@ export default function MyStorePage() {
         </div>
       ) : products.length === 0 ? (
         <EmptyState
-          title="Kho trong"
-          description="Chua co san pham nao. Hay them san pham tu extension hoac trang Products."
+          title="Kho trống"
+          description="Chưa có sản phẩm nào. Hãy thêm sản phẩm từ extension hoặc trang Sản phẩm."
         />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -94,7 +94,7 @@ export default function MyStorePage() {
       )}
 
       {!loading && products.length > 0 && (
-        <p className="text-xs text-center text-muted-foreground">{products.length} san pham trong kho</p>
+        <p className="text-xs text-center text-muted-foreground">{products.length} sản phẩm trong kho</p>
       )}
     </div>
   );

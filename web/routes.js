@@ -8,6 +8,8 @@ import {
   spinPostContent,
   approveAdvisory,
   analyzePost,
+  generateAdvisories,
+  buildConfigWithAI,
 } from "./ai.js";
 
 export const authRouter = Router();
@@ -703,15 +705,29 @@ dataRouter.delete("/conversations/:id", asyncHandler(async (req, res) => {
 /* ----------------------------- ADVISORIES ------------------------------ */
 
 function mapAdvisoryRow(r) {
+  let usedProducts = r.used_products ?? [];
+  if (typeof usedProducts === "string") {
+    try { usedProducts = JSON.parse(usedProducts); } catch (e) { usedProducts = []; }
+  }
   return {
     id: r.id,
     postId: r.post_id,
     userId: r.user_id,
     content: r.content,
+    reply: r.reply ?? r.content ?? "",
     status: r.status,
-    usedProducts: r.used_products ?? [],
+    usedProducts: Array.isArray(usedProducts) ? usedProducts : [],
     needsHumanCheck: r.needs_human_check,
     checkNote: r.check_note,
+    intent: r.intent ?? null,
+    confidence: r.confidence ?? null,
+    permalink: r.permalink ?? null,
+    authorName: r.author_name ?? null,
+    groupId: r.group_id ?? null,
+    groupName: r.group_name ?? null,
+    postText: r.post_text ?? null,
+    needs: r.needs ?? null,
+    budget: r.budget ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -750,28 +766,51 @@ dataRouter.post("/advisories", asyncHandler(async (req, res) => {
   const userId = req.userId;
   const a = req.body || {};
   if (!a.postId) return res.status(400).json({ error: "postId required" });
+  const replyVal = a.reply ?? a.content ?? null;
   await getPool().query(
     `INSERT INTO advisories
-       (post_id, user_id, content, status, used_products, needs_human_check,
-        check_note, created_at, updated_at)
+       (post_id, user_id, content, reply, status, used_products, needs_human_check,
+        check_note, intent, confidence, permalink, author_name, group_id, group_name,
+        post_text, needs, budget, created_at, updated_at)
      VALUES
-       (:postId, :userId, :content, :status, :usedProducts, :needsHumanCheck,
-        :checkNote, NOW(), NOW())
+       (:postId, :userId, :content, :reply, :status, :usedProducts, :needsHumanCheck,
+        :checkNote, :intent, :confidence, :permalink, :authorName, :groupId, :groupName,
+        :postText, :needs, :budget, NOW(), NOW())
      ON DUPLICATE KEY UPDATE
        content = VALUES(content),
+       reply = VALUES(reply),
        status = VALUES(status),
        used_products = VALUES(used_products),
        needs_human_check = VALUES(needs_human_check),
        check_note = VALUES(check_note),
+       intent = VALUES(intent),
+       confidence = VALUES(confidence),
+       permalink = VALUES(permalink),
+       author_name = VALUES(author_name),
+       group_id = VALUES(group_id),
+       group_name = VALUES(group_name),
+       post_text = VALUES(post_text),
+       needs = VALUES(needs),
+       budget = VALUES(budget),
        updated_at = NOW()`,
     {
       postId: a.postId,
       userId,
-      content: a.content ?? null,
+      content: a.content ?? replyVal,
+      reply: replyVal,
       status: a.status ?? "pending",
       usedProducts: JSON.stringify(Array.isArray(a.usedProducts) ? a.usedProducts : []),
       needsHumanCheck: a.needsHumanCheck ? 1 : 0,
       checkNote: a.checkNote ?? null,
+      intent: a.intent ?? null,
+      confidence: a.confidence ?? null,
+      permalink: a.permalink ?? null,
+      authorName: a.authorName ?? null,
+      groupId: a.groupId ?? null,
+      groupName: a.groupName ?? null,
+      postText: a.postText ?? null,
+      needs: a.needs ?? null,
+      budget: a.budget ?? null,
     }
   );
   const [rows] = await getPool().query(
@@ -790,6 +829,14 @@ dataRouter.patch("/advisories/:postId", asyncHandler(async (req, res) => {
   if (patch.content !== undefined) {
     sets.push("content = :content");
     params.content = patch.content;
+    sets.push("reply = :reply");
+    params.reply = patch.content;
+  }
+  if (patch.reply !== undefined) {
+    sets.push("reply = :reply2");
+    params.reply2 = patch.reply;
+    sets.push("content = :content2");
+    params.content2 = patch.reply;
   }
   if (patch.status !== undefined) {
     sets.push("status = :status");
@@ -806,6 +853,14 @@ dataRouter.patch("/advisories/:postId", asyncHandler(async (req, res) => {
   if (patch.checkNote !== undefined) {
     sets.push("check_note = :checkNote");
     params.checkNote = patch.checkNote;
+  }
+  if (patch.intent !== undefined) {
+    sets.push("intent = :intent");
+    params.intent = patch.intent;
+  }
+  if (patch.confidence !== undefined) {
+    sets.push("confidence = :confidence");
+    params.confidence = patch.confidence;
   }
   const [result] = await getPool().query(
     `UPDATE advisories SET ${sets.join(", ")} WHERE post_id = :postId AND user_id = :userId`,
@@ -1616,6 +1671,107 @@ dataRouter.post("/ai/approve-advisory", asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "missing postId", message: "Thiếu ID bài viết cần duyệt." });
   }
   const result = await approveAdvisory(postId);
+  res.json(result);
+}));
+
+// POST /api/ai/generate-advisories — Quét hàng loạt bài viết đã crawl, phân loại
+// ý định, tìm sản phẩm phù hợp và soạn tư vấn nháp, lưu vào bảng advisories.
+// Body: { scanLimit?: number, maxPerGroup?: number, groupId?: string, force?: boolean }
+dataRouter.post("/ai/generate-advisories", asyncHandler(async (req, res) => {
+  const { scanLimit, maxPerGroup, groupId, force } = req.body || {};
+  const result = await generateAdvisories({
+    userId: req.userId,
+    scanLimit,
+    maxPerGroup,
+    groupId,
+    force,
+  });
+  res.json(result);
+}));
+
+// POST /api/ai/build-config — Xây cấu hình máy tính bằng AI. Lấy ứng viên từ
+// bảng products (catalog chung), xây candidates theo danh mục rồi gọi
+// buildConfigWithAI. Trả về danh sách linh kiện được chọn kèm thông tin đầy đủ.
+// Body: { budget: number, needs?: string, categories: string[] }
+dataRouter.post("/ai/build-config", asyncHandler(async (req, res) => {
+  const { budget, needs, categories } = req.body || {};
+  if (!budget || Number(budget) <= 0) {
+    return res.status(400).json({ ok: false, error: "Chưa nhập ngân sách hợp lệ." });
+  }
+  if (!Array.isArray(categories) || !categories.length) {
+    return res.status(400).json({ ok: false, error: "Chưa chọn danh mục linh kiện nào." });
+  }
+
+  // Chuẩn hóa danh mục để so sánh không phân biệt hoa thường.
+  const catSet = categories.map((c) => String(c).toLowerCase().trim()).filter(Boolean);
+
+  // Truy vấn sản phẩm theo danh mục từ catalog chung (không lọc user_id vì
+  // bảng products là catalog chia sẻ giữa tất cả user).
+  const pool = getPool();
+  const placeholders = catSet.map(() => "?").join(", ");
+  const [rows] = await pool.query(
+    `SELECT id, name, price, build_price AS buildPrice, category, store,
+            in_stock AS inStock, permalink
+     FROM products
+     WHERE in_stock != 0
+       AND (price IS NULL OR price > 0)
+       AND LOWER(category) IN (${placeholders})
+     ORDER BY category, price ASC
+     LIMIT 500`,
+    catSet
+  );
+
+  // Xây map ứng viên theo danh mục.
+  // Key = danh mục gốc từ DB (giữ nguyên case), vì buildConfigWithAI so khớp
+  // theo categories[] truyền vào. Ta map ngược từ catSet.
+  const candidateMap = {}; // category (lowercase) -> array
+  for (const r of rows || []) {
+    const cat = (r.category || "").toLowerCase().trim();
+    if (!candidateMap[cat]) candidateMap[cat] = [];
+    candidateMap[cat].push({
+      id: String(r.id || ""),
+      name: r.name || "",
+      price: r.price != null ? Number(r.price) : null,
+      buildPrice: r.buildPrice != null ? Number(r.buildPrice) : null,
+      store: r.store || "",
+      owned: false, // catalog chung — không biết user có sở hữu không
+      url: r.permalink || "",
+    });
+  }
+
+  // Chuyển về format candidates dùng key = category gốc của request.
+  const candidates = {};
+  for (const origCat of categories) {
+    const key = origCat.toLowerCase().trim();
+    candidates[origCat] = candidateMap[key] || [];
+  }
+
+  const result = await buildConfigWithAI({ budget: Number(budget), needs, categories, candidates }, req.userId);
+
+  // Làm phong phú kết quả: tra ngược candidates để gắn name/price/store/url.
+  if (result && result.ok && Array.isArray(result.items)) {
+    // Xây lookup: id -> product info (từ tất cả candidates).
+    const byId = {};
+    for (const arr of Object.values(candidates)) {
+      for (const p of arr) {
+        if (p.id) byId[p.id] = p;
+      }
+    }
+    result.items = result.items.map((item) => {
+      const p = byId[item.id] || {};
+      return {
+        category: item.category,
+        id: item.id,
+        name: p.name || item.id,
+        price: p.price != null ? p.price : null,
+        store: p.store || "",
+        url: p.url || "",
+        owned: p.owned || false,
+        reason: item.reason || "",
+      };
+    });
+  }
+
   res.json(result);
 }));
 

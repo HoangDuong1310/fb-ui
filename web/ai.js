@@ -285,6 +285,90 @@ function extractMoneyFigures(text) {
  * @param {number} [opts.limit] - max results (default 18)
  * @returns {Promise<Array>}
  */
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Market price helpers — ported from src/dashboard/views/products.js
+// Used by cheapestMarketFor() to match group_prices rows to own products.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PROD_STOPWORDS = new Set([
+  "ram", "ổ", "cứng", "card", "màn", "hình", "bộ", "nhớ", "máy", "tính",
+  "laptop", "pc", "desktop", "gaming", "van", "phòng", "văn", "phím",
+  "chuột", "tai", "nghe", "loa", "pin", "sạc", "adapter", "nguồn",
+  "case", "thùng", "tản", "nhiệt", "quạt", "fan", "ổ", "đĩa", "mới",
+  "cũ", "pass", "sale", "gb", "tb", "mhz", "ghz", "inch", "cm",
+]);
+
+/**
+ * Tính tập token "đặc trưng" của tên sản phẩm.
+ * Port của productSignature() từ extension/src/dashboard/views/products.js
+ */
+function productSignature(name) {
+  if (!name) return new Set();
+  // Bỏ nội dung trong ngoặc
+  let s = name.replace(/\(.*?\)/g, " ");
+  // Chuẩn hoá tiếng Việt → ASCII (loại dấu)
+  s = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/gi, "d");
+  // Non-alphanumeric → space, lowercase
+  s = s.replace(/[^a-z0-9\s]/gi, " ").toLowerCase();
+  const tokens = s.split(/\s+/).filter(Boolean);
+  // Ưu tiên token chứa chữ số (mã model) nếu có
+  const strong = tokens.filter((t) => /\d/.test(t) && t.length >= 2);
+  const pool = strong.length ? strong : tokens;
+  return new Set(pool.filter((t) => t.length > 1 && !PROD_STOPWORDS.has(t)));
+}
+
+/** a ⊆ b (tập a là tập con của b) */
+function tokensSubset(a, b) {
+  for (const t of a) if (!b.has(t)) return false;
+  return true;
+}
+
+/** Token trông giống mã model: dài ≥ 4 và có chữ số */
+function isModelCode(t) {
+  return t.length >= 4 && /\d/.test(t);
+}
+
+/**
+ * Tìm giá thị trường rẻ nhất (từ group_prices) khớp với sản phẩm kho `mine`.
+ * Trả về { name, price, condition, warranty, sellerName, groupId } | null.
+ */
+async function cheapestMarketFor(mine) {
+  if (!mine || !mine.name) return null;
+  const sig = productSignature(mine.name);
+  if (!sig.size) return null;
+
+  const pool = getPool();
+  // Lấy tối đa 200 row từ group_prices có giá hợp lệ, chia sẻ
+  const [rows] = await pool.query(
+    `SELECT name, price, \`condition\`, warranty, seller_name, group_id
+     FROM group_prices
+     WHERE price > 0 AND share_group_prices = 1
+     ORDER BY price ASC
+     LIMIT 200`
+  );
+
+  for (const row of rows) {
+    const mSig = productSignature(row.name);
+    if (!mSig.size) continue;
+    // Khớp nếu sig ⊆ mSig (kích thước ≥ 2) HOẶC có token mã model chung
+    const overlap = [...sig].filter((t) => mSig.has(t));
+    const matchBySubset = overlap.length >= 2 && tokensSubset(sig, mSig);
+    const matchByModelCode = overlap.some(isModelCode);
+    if (matchBySubset || matchByModelCode) {
+      return {
+        name: row.name,
+        price: row.price,
+        condition: row.condition || null,
+        warranty: row.warranty || null,
+        sellerName: row.seller_name || null,
+        groupId: row.group_id || null,
+      };
+    }
+  }
+  return null;
+}
+
 async function searchProducts({ query, maxPrice, limit } = {}) {
   const pool = getPool();
   const lim = Math.min(Math.max(Number(limit) || 18, 1), 50);
@@ -329,11 +413,14 @@ async function searchProducts({ query, maxPrice, limit } = {}) {
 
 async function saveAdvisory(adv) {
   const pool = getPool();
-  const sql = `INSERT INTO advisories (post_id, group_id, group_name, permalink, author_name, post_text, intent, needs, budget, reply, used_products, confidence, needs_human_check, check_note, status, source, created_at)
-    VALUES (:postId, :groupId, :groupName, :permalink, :authorName, :postText, :intent, :needs, :budget, :reply, :usedProducts, :confidence, :needsHumanCheck, :checkNote, :status, :source, NOW())
-    ON DUPLICATE KEY UPDATE reply = VALUES(reply), used_products = VALUES(used_products), confidence = VALUES(confidence), needs_human_check = VALUES(needs_human_check), check_note = VALUES(check_note), status = VALUES(status), source = VALUES(source)`;
+  // `content` mirrors `reply` so the per-user advisory API (which reads the
+  // `content` column) stays in sync with the AI-drafted reply text.
+  const sql = `INSERT INTO advisories (post_id, user_id, group_id, group_name, permalink, author_name, post_text, intent, needs, budget, reply, content, used_products, confidence, needs_human_check, check_note, status, source, created_at, updated_at)
+    VALUES (:postId, :userId, :groupId, :groupName, :permalink, :authorName, :postText, :intent, :needs, :budget, :reply, :content, :usedProducts, :confidence, :needsHumanCheck, :checkNote, :status, :source, NOW(), NOW())
+    ON DUPLICATE KEY UPDATE group_id = VALUES(group_id), group_name = VALUES(group_name), permalink = VALUES(permalink), author_name = VALUES(author_name), post_text = VALUES(post_text), intent = VALUES(intent), needs = VALUES(needs), budget = VALUES(budget), reply = VALUES(reply), content = VALUES(content), used_products = VALUES(used_products), confidence = VALUES(confidence), needs_human_check = VALUES(needs_human_check), check_note = VALUES(check_note), status = VALUES(status), source = VALUES(source), updated_at = NOW()`;
   await pool.query(sql, {
     postId: adv.postId,
+    userId: adv.userId ?? null,
     groupId: adv.groupId || "",
     groupName: adv.groupName || "",
     permalink: adv.permalink || "",
@@ -343,6 +430,7 @@ async function saveAdvisory(adv) {
     needs: adv.needs || "",
     budget: adv.budget || null,
     reply: adv.reply || "",
+    content: adv.reply || "",
     usedProducts: JSON.stringify(adv.usedProducts || []),
     confidence: adv.confidence || "low",
     needsHumanCheck: adv.needsHumanCheck ? 1 : 0,
@@ -353,11 +441,12 @@ async function saveAdvisory(adv) {
   return adv;
 }
 
-async function getAdvisory(postId) {
+async function getAdvisory(postId, userId) {
   const pool = getPool();
+  const where = userId != null ? "post_id = :postId AND user_id = :userId" : "post_id = :postId";
   const [rows] = await pool.query(
-    "SELECT post_id AS postId, permalink, reply, status FROM advisories WHERE post_id = :postId LIMIT 1",
-    { postId }
+    `SELECT post_id AS postId, permalink, reply, status FROM advisories WHERE ${where} LIMIT 1`,
+    { postId, userId: userId ?? null }
   );
   return rows && rows.length ? rows[0] : null;
 }
@@ -483,7 +572,19 @@ export async function draftAdvisory(post, products, intentInfo, userId) {
     idMap[short] = p;
   });
 
-  // Slim products for AI
+  // Fetch market (group_prices) comparison for each product in parallel
+  const marketMap = {}; // idx+1 -> cheapest market entry | null
+  await Promise.all(
+    (products || []).map(async (p, idx) => {
+      try {
+        marketMap[String(idx + 1)] = await cheapestMarketFor(p);
+      } catch {
+        marketMap[String(idx + 1)] = null;
+      }
+    })
+  );
+
+  // Slim products for AI — include market price column
   const slim = (products || []).map((p, idx) => ({
     id: String(idx + 1),
     name: p.name,
@@ -492,17 +593,26 @@ export async function draftAdvisory(post, products, intentInfo, userId) {
     store: p.store || "",
     warranty: p.warranty || "",
     inStock: p.inStock !== false,
+    marketPrice: marketMap[String(idx + 1)]?.price ?? null,
+    marketCondition: marketMap[String(idx + 1)]?.condition ?? null,
   }));
 
   const userPrompt =
     `Tin nhắn khách:\n${String(post.text || "").slice(0, 200000)}\n\n` +
     (slim.length
-      ? `Sản phẩm kho hiện có (id | tên | giá | giá bộ | cửa hàng | bảo hành | tồn):\n${slim.map((p) => `${p.id}|${p.name}|${p.price ?? "?"}|${p.buildPrice ?? "?"}|${p.store}|${p.warranty}|${p.inStock ? "có" : "hết"}`).join("\n")}\n\n`
+      ? `Sản phẩm kho hiện có (id | tên | giá kho | giá bộ | cửa hàng | bảo hành | tồn | giá tt | tình trạng tt):\n${slim
+          .map(
+            (p) =>
+              `${p.id}|${p.name}|${p.price ?? "?"}|${p.buildPrice ?? "?"}|${p.store}|${p.warranty}|${p.inStock ? "có" : "hết"}|${p.marketPrice ?? "-"}|${p.marketCondition ?? "-"}`
+          )
+          .join("\n")}\n\n`
       : "") +
     `Ngân sách khách: ${intentInfo.budget ? intentInfo.budget + "₫" : "không rõ"}\n` +
     `Nhu cầu: ${intentInfo.needs || "không rõ"}\n` +
     `Categories: ${(intentInfo.categories || []).join(", ")}\n\n` +
-    `Hãy đọc tin nhắn khách, chọn sản phẩm phù hợp từ kho (nếu có) và soạn回复. Nếu không có sản phẩm kho phù hợp thì KHÔNG reply.`;
+    `Hãy đọc tin nhắn khách, chọn sản phẩm phù hợp từ kho (nếu có) và soạn回复. ` +
+    `Nếu "giá tt" (giá thị trường) thấp hơn "giá kho" đáng kể, hãy đề cập để tư vấn chân thực. ` +
+    `Nếu không có sản phẩm kho phù hợp thì KHÔNG reply.`;
 
   const images = Array.isArray(post.images) ? post.images.filter((u) => /^https?:\/\//i.test(u)).slice(0, 4) : [];
   const messages = [
@@ -617,6 +727,7 @@ export async function analyzePost(post, userId) {
 
   const saved = await saveAdvisory({
     postId: post.postId,
+    userId: userId ?? null,
     groupId: post.groupId || "",
     groupName: post.groupName || "",
     permalink: post.permalink || "",
@@ -648,6 +759,115 @@ export async function analyzePost(post, userId) {
     checkNote: draft.checkNote || "",
     advisory: saved,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// generateAdvisories — batch scan crawled posts -> prefilter -> classify ->
+// product lookup -> draft -> save (dedupe per user via getAdvisory).
+// Mirrors src/advisory.js generateAdvisories but queries the posts table
+// directly (share-filter) and omits the extension's broadcast progress events.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function generateAdvisories({ userId, scanLimit, maxPerGroup, groupId, force } = {}) {
+  const cfg = await getUserAIConfig(userId);
+  if (!cfg.apiKey) {
+    return { ok: false, error: "Chưa cấu hình API key AI. Vào tab 'Cài đặt' để nhập trước khi tạo tư vấn." };
+  }
+
+  const limit = Math.max(1, Math.min(Number(scanLimit) || 60, 300));
+  const perGroupCap = Math.max(1, Math.min(Number(maxPerGroup) || 5, 50));
+  const forceRedo = !!force;
+
+  const pool = getPool();
+  const conds = ["(crawled_by_user_id = :userId OR share_crawled = 1)"];
+  const params = { userId: userId ?? null, limit };
+  if (groupId) {
+    conds.push("group_id = :groupId");
+    params.groupId = groupId;
+  }
+  const [rows] = await pool.query(
+    `SELECT post_id AS postId, group_id AS groupId, group_name AS groupName, permalink, author_name AS authorName, text FROM posts WHERE ${conds.join(" AND ")} ORDER BY crawled_at DESC LIMIT :limit`,
+    params
+  );
+  const posts = rows || [];
+
+  const perGroupCount = new Map();
+  let scanned = 0,
+    created = 0,
+    skippedExisting = 0,
+    ignored = 0,
+    noProduct = 0,
+    flagged = 0;
+
+  for (const post of posts) {
+    scanned += 1;
+    if (!post || !post.postId) continue;
+
+    if (!forceRedo) {
+      const existing = await getAdvisory(post.postId, userId);
+      if (existing) {
+        skippedExisting += 1;
+        continue;
+      }
+    }
+
+    const pre = advisoryPreFilter(post.text || "");
+    if (!pre) {
+      ignored += 1;
+      continue;
+    }
+
+    const gid = post.groupId || "_";
+    if ((perGroupCount.get(gid) || 0) >= perGroupCap) continue;
+
+    const info = await classifyIntent(post.text || "", userId);
+    if (info.intent === "ignore") {
+      ignored += 1;
+      continue;
+    }
+
+    const query = (info.keywords || info.needs || "").trim();
+    let matches = await searchProducts({ query, maxPrice: info.budget || undefined, limit: 18 });
+    matches = (matches || []).filter((p) => (Number(p.price) || 0) > 0 && p.inStock !== false);
+    if (!matches.length && query) {
+      matches = (await searchProducts({ query, limit: 18 })).filter(
+        (p) => (Number(p.price) || 0) > 0 && p.inStock !== false
+      );
+    }
+    if (!matches.length && info.intent === "buy") {
+      noProduct += 1;
+      continue;
+    }
+
+    const draft = await draftAdvisory(post, matches, info, userId);
+    if (!draft || !draft.allowReply) continue;
+
+    await saveAdvisory({
+      postId: post.postId,
+      userId: userId ?? null,
+      groupId: post.groupId || "",
+      groupName: post.groupName || "",
+      permalink: post.permalink || "",
+      authorName: post.authorName || "",
+      postText: String(post.text || "").slice(0, 1000),
+      intent: info.intent,
+      needs: info.needs,
+      budget: info.budget || null,
+      reply: draft.reply,
+      usedProducts: draft.usedProducts || [],
+      confidence: draft.confidence,
+      needsHumanCheck: !!draft.needsHumanCheck,
+      checkNote: draft.checkNote || "",
+      status: "pending",
+      source: "batch",
+    });
+
+    created += 1;
+    if (draft.needsHumanCheck) flagged += 1;
+    perGroupCount.set(gid, (perGroupCount.get(gid) || 0) + 1);
+  }
+
+  return { ok: true, scanned, created, skippedExisting, ignored, noProduct, flagged };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -803,6 +1023,357 @@ export async function spinPostContent(payload, userId) {
   } catch {
     return fallback();
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Xây cấu hình máy tính (Build Config)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Cứu vớt khi JSON của AI bị cắt cụt: dùng regex bóc từng object linh kiện còn
+ * nguyên vẹn (có đủ category + id). Bỏ qua object dở dang ở cuối.
+ */
+export function salvageBuildItems(text) {
+  if (!text) return [];
+  const out = [];
+  const re = /\{[^{}]*?"category"\s*:\s*"([^"]*)"[^{}]*?"id"\s*:\s*"([^"]*)"[^{}]*?\}/g;
+  let m;
+  while ((m = re.exec(String(text)))) {
+    const seg = m[0];
+    const rMatch = seg.match(/"reason"\s*:\s*"([^"]*)"/);
+    out.push({ category: m[1], id: m[2], reason: rMatch ? rMatch[1] : "" });
+  }
+  // Một số model đặt id trước category -> thử chiều ngược lại nếu chưa bóc được gì.
+  if (!out.length) {
+    const re2 = /\{[^{}]*?"id"\s*:\s*"([^"]*)"[^{}]*?"category"\s*:\s*"([^"]*)"[^{}]*?\}/g;
+    while ((m = re2.exec(String(text)))) {
+      const seg = m[0];
+      const rMatch = seg.match(/"reason"\s*:\s*"([^"]*)"/);
+      out.push({ category: m[2], id: m[1], reason: rMatch ? rMatch[1] : "" });
+    }
+  }
+  return out;
+}
+
+/**
+ * Thuật toán dự phòng: chọn món rẻ nhất mỗi danh mục, nếu còn dư ngân sách thì
+ * NÂNG CẤP dần các danh mục (theo thứ tự ưu tiên đã truyền) lên món đắt hơn kế
+ * tiếp mà vẫn nằm trong ngân sách. Không gọi mạng, luôn cho ra cấu hình đủ bộ.
+ */
+export function fallbackBuild(budget, categories, candidates) {
+  // Bước 1: nền tảng = món rẻ nhất mỗi danh mục.
+  const sorted = {};
+  const pick = {};
+  let total = 0;
+  for (const c of categories) {
+    const pool = (candidates[c] || [])
+      .filter((x) => x && x.id && Number(x.price) > 0)
+      .slice()
+      .sort((a, b) => Number(a.price) - Number(b.price));
+    sorted[c] = pool;
+    if (pool.length) {
+      pick[c] = 0;
+      total += Number(pool[0].price);
+    } else {
+      pick[c] = -1; // không có ứng viên có giá
+    }
+  }
+
+  // Bước 2: nâng cấp tham lam theo thứ tự ưu tiên (danh mục đầu = quan trọng nhất).
+  let improved = true;
+  while (improved) {
+    improved = false;
+    for (const c of categories) {
+      const pool = sorted[c];
+      const idx = pick[c];
+      if (idx < 0 || idx + 1 >= pool.length) continue;
+      const delta = Number(pool[idx + 1].price) - Number(pool[idx].price);
+      if (total + delta <= budget) {
+        pick[c] = idx + 1;
+        total += delta;
+        improved = true;
+      }
+    }
+  }
+
+  const items = [];
+  for (const c of categories) {
+    const pool = sorted[c];
+    const idx = pick[c];
+    if (idx >= 0 && pool[idx]) {
+      items.push({ category: c, id: pool[idx].id, reason: "Tự chọn cân đối theo ngân sách." });
+    } else if ((candidates[c] || []).length) {
+      // Có ứng viên nhưng không có giá -> vẫn đưa vào (giá sẽ hiển thị "chưa có").
+      items.push({ category: c, id: candidates[c][0].id, reason: "Chưa có giá, đưa vào để tham khảo." });
+    }
+  }
+
+  return {
+    ok: true,
+    source: "fallback",
+    items,
+    note:
+      total > 0
+        ? "Tổng tạm tính " + total.toLocaleString("vi-VN") + "₫ trong ngân sách " +
+          budget.toLocaleString("vi-VN") + "₫."
+        : "",
+  };
+}
+
+/**
+ * Dựng cấu hình máy tính bằng AI (server-side).
+ * candidates: { [category]: [{ id, name, price, store, owned }] }
+ * userId: dùng để lấy API config từ DB.
+ */
+export async function buildConfigWithAI(payload, userId) {
+  const budget = Number(payload && payload.budget) || 0;
+  const needs = (payload && payload.needs ? String(payload.needs) : "").trim();
+  const categories = Array.isArray(payload && payload.categories) ? payload.categories : [];
+  const candidates = (payload && payload.candidates) || {};
+
+  if (!budget || budget <= 0) {
+    return { ok: false, error: "Chưa nhập ngân sách hợp lệ." };
+  }
+  if (!categories.length) {
+    return { ok: false, error: "Chưa chọn danh mục linh kiện nào." };
+  }
+  // Phải có ít nhất một ứng viên ở đâu đó.
+  const totalCand = categories.reduce(
+    (n, c) => n + ((candidates[c] && candidates[c].length) || 0),
+    0
+  );
+  if (!totalCand) {
+    return {
+      ok: false,
+      error: "Không có linh kiện nào trong kho/thị trường khớp danh mục đã chọn. Hãy nhập kho hoặc đồng bộ nguồn giá.",
+    };
+  }
+
+  const cfg = await getUserAIConfig(userId);
+  const apiBase = (cfg.apiBase || "").replace(/\/+$/, "");
+  const apiKey = cfg.apiKey || "";
+  const model = cfg.model || "";
+
+  // Không có API key -> đi thẳng fallback thuật toán (vẫn cho ra cấu hình dùng được).
+  if (!apiKey || !apiBase) {
+    const fb = fallbackBuild(budget, categories, candidates);
+    fb.note = "Chưa cấu hình API key, dùng thuật toán tự chọn (rẻ/cân đối). " + (fb.note || "");
+    return fb;
+  }
+
+  // Rút gọn dữ liệu gửi AI: lấy MẪU TRẢI ĐỀU theo giá (rẻ nhất -> đắt nhất) để AI
+  // thấy được cả linh kiện cao cấp, không chỉ hàng rẻ. Tối đa ~16 món/danh mục.
+  const slim = {};
+  // Mỗi ứng viên gửi cho AI được gán MỘT MÃ NGẮN (số thứ tự) thay vì productId dài.
+  // Lý do: AI hay chép sai chuỗi id dài/đặc biệt -> đối chiếu hụt -> danh mục bị bỏ sót oan.
+  // Mã ngắn dễ trả đúng, và ta tự map ngược về ứng viên thực + danh mục CHUẨN.
+  const idMap = new Map(); // mã ngắn -> { category, realId }
+  let seq = 0;
+  for (const c of categories) {
+    const sortedAll = (candidates[c] || [])
+      .filter((x) => x && x.id)
+      .slice()
+      .sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+    // Cắt món đắt hơn cả NGÂN SÁCH; luôn giữ ít nhất món rẻ nhất.
+    const underBudget = sortedAll.filter((x) => (Number(x.price) || Infinity) <= budget);
+    const full = underBudget.length ? underBudget : sortedAll.slice(0, 1);
+    const CAP = 16;
+    let chosenPool;
+    if (full.length <= CAP) {
+      chosenPool = full;
+    } else {
+      // Luôn giữ hàng trong kho (owned) + lấy mẫu trải đều phần còn lại theo giá.
+      const ownedItems = full.filter((x) => x.owned);
+      const rest = full.filter((x) => !x.owned);
+      const keepIds = new Set(ownedItems.map((x) => String(x.id)));
+      const slots = Math.max(1, CAP - keepIds.size);
+      const step = rest.length / slots;
+      const sampled = [];
+      for (let i = 0; i < slots; i++) {
+        const it = rest[Math.min(rest.length - 1, Math.floor(i * step))];
+        if (it && !keepIds.has(String(it.id))) {
+          keepIds.add(String(it.id));
+          sampled.push(it);
+        }
+      }
+      // Đảm bảo có cả món đắt nhất để AI biết trần hiệu năng.
+      const top = rest[rest.length - 1];
+      if (top && !keepIds.has(String(top.id))) sampled.push(top);
+      chosenPool = ownedItems.concat(sampled)
+        .sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+    }
+    slim[c] = chosenPool.map((x) => {
+      const sid = String(++seq);
+      const ref = { category: c, realId: x.id };
+      idMap.set(sid, ref);          // mã ngắn AI cần trả về
+      idMap.set(String(x.id), ref); // dự phòng nếu AI lỡ trả lại nguyên id thực
+      return {
+        id: sid,
+        name: x.name || "",
+        price: Number(x.price) || null,
+        store: x.store || "",
+        owned: !!x.owned,
+      };
+    });
+  }
+
+  const profile = await getActiveProfile();
+  const sys = systemForBuild(profile);
+
+  const user =
+    "NGÂN SÁCH: " + budget + " VND (hãy tận dụng tối đa, không vượt)\n" +
+    "NHU CẦU: " + (needs || "(không nêu rõ, hãy cân đối đa dụng)") + "\n" +
+    "DANH MỤC BẮT BUỘC (theo thứ tự ưu tiên): " + JSON.stringify(categories) + "\n" +
+    "ỨNG VIÊN (JSON, đã sắp theo giá tăng dần):\n" + JSON.stringify(slim) + "\n" +
+    "Hãy phân tích như một kỹ sư rồi trả JSON theo đúng cấu trúc đã mô tả. Tổng giá các món chọn phải <= ngân sách.";
+
+  const AI_TIMEOUT_MS = 25000;
+  let resp;
+  try {
+    resp = await fetchWithTimeout(
+      apiBase + "/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + apiKey,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: sys },
+            { role: "user", content: user },
+          ],
+          temperature: 0.2,
+          max_tokens: 3000,
+          stream: false,
+          response_format: { type: "json_object" },
+        }),
+      },
+      AI_TIMEOUT_MS
+    );
+  } catch (e) {
+    const timedOut = e && e.name === "AbortError";
+    const fb = fallbackBuild(budget, categories, candidates);
+    fb.note =
+      (timedOut ? "AI phản hồi quá lâu (>25s)" : "Lỗi mạng khi gọi AI") +
+      ", dùng thuật toán tự chọn. " +
+      (fb.note || "");
+    return fb;
+  }
+
+  // Một số endpoint không hỗ trợ response_format json_object -> trả 400/422.
+  // Thử lại 1 lần KHÔNG kèm response_format trước khi bỏ cuộc về thuật toán.
+  if (!resp.ok && (resp.status === 400 || resp.status === 422)) {
+    try {
+      resp = await fetchWithTimeout(
+        apiBase + "/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + apiKey,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: sys },
+              { role: "user", content: user },
+            ],
+            temperature: 0.2,
+            max_tokens: 3000,
+            stream: false,
+          }),
+        },
+        AI_TIMEOUT_MS
+      );
+    } catch (e) {
+      const timedOut = e && e.name === "AbortError";
+      const fb = fallbackBuild(budget, categories, candidates);
+      fb.note =
+        (timedOut ? "AI phản hồi quá lâu (>25s, lần 2)" : "Lỗi mạng khi gọi AI (lần 2)") +
+        ", dùng thuật toán tự chọn. " +
+        (fb.note || "");
+      return fb;
+    }
+  }
+
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => "");
+    const fb = fallbackBuild(budget, categories, candidates);
+    fb.note =
+      "API lỗi " + resp.status + " (" + body.slice(0, 120) + "), dùng thuật toán tự chọn. " +
+      (fb.note || "");
+    return fb;
+  }
+
+  let data;
+  try {
+    data = await resp.json();
+  } catch {
+    const fb = fallbackBuild(budget, categories, candidates);
+    fb.note = "Không đọc được phản hồi AI, dùng thuật toán tự chọn. " + (fb.note || "");
+    return fb;
+  }
+
+  const content =
+    data && data.choices && data.choices[0] && data.choices[0].message
+      ? data.choices[0].message.content
+      : "";
+  const parsed = parseSelectorJson(content);
+  let items = parsed && Array.isArray(parsed.items) ? parsed.items : null;
+  let salvagedNote = parsed && parsed.note ? String(parsed.note) : "";
+
+  // Nếu JSON parse hỏng (thường do bị cắt cụt vì hết token) -> cứu vớt bằng regex.
+  if (!items || !items.length) {
+    items = salvageBuildItems(content);
+  }
+
+  if (!items || !items.length) {
+    const fb = fallbackBuild(budget, categories, candidates);
+    const snip = String(content || "").replace(/\s+/g, " ").slice(0, 160);
+    fb.note =
+      "AI trả về không đọc được (" + (snip || "rỗng") + "), dùng thuật toán tự chọn. " +
+      (fb.note || "");
+    return fb;
+  }
+
+  // Đối chiếu lựa chọn của AI qua idMap (mã ngắn -> {category, realId}).
+  // KHÔNG tin tên danh mục AI tự gõ vì AI hay đổi cách gọi -> bỏ sót oan.
+  const chosen = [];
+  const usedCats = new Set();
+  for (const it of items) {
+    if (!it || it.id == null) continue;
+    const ref = idMap.get(String(it.id).trim());
+    if (!ref) continue;
+    if (usedCats.has(ref.category)) continue;
+    usedCats.add(ref.category);
+    chosen.push({ category: ref.category, id: ref.realId, reason: (it.reason || "").slice(0, 200) });
+  }
+  // Danh mục nào AI bỏ sót -> lấp bằng món rẻ nhất còn lại.
+  for (const c of categories) {
+    if (usedCats.has(c)) continue;
+    const pool = (candidates[c] || [])
+      .slice()
+      .sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+    if (pool.length) {
+      chosen.push({ category: c, id: pool[0].id, reason: "Bổ sung tự động (AI bỏ sót)." });
+      usedCats.add(c);
+    }
+  }
+
+  if (!chosen.length) {
+    const fb = fallbackBuild(budget, categories, candidates);
+    fb.note = "AI không chọn được món hợp lệ, dùng thuật toán tự chọn. " + (fb.note || "");
+    return fb;
+  }
+
+  return {
+    ok: true,
+    source: "ai",
+    items: chosen,
+    note: String(salvagedNote || "").slice(0, 400),
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -34,16 +34,16 @@ export default function ProductsPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <PageHeader title="San pham / Gia" description="Quan ly san pham duoc dong bo tu cac nguon." />
+      <PageHeader title="Sản phẩm / Giá" description="Quản lý sản phẩm được đồng bộ từ các nguồn." />
 
       <div className="flex items-end gap-3 flex-wrap">
         <div className="flex-1 min-w-[200px]">
-          <Label htmlFor="q">Tim kiem</Label>
+          <Label htmlFor="q">Tìm kiếm</Label>
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               id="q"
-              placeholder="Ten san pham..."
+              placeholder="Tên sản phẩm..."
               className="pl-8"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -51,15 +51,15 @@ export default function ProductsPage() {
           </div>
         </div>
         <div className="min-w-[150px]">
-          <Label htmlFor="src">Nguon</Label>
+          <Label htmlFor="src">Nguồn</Label>
           <Input
             id="src"
-            placeholder="Tat ca nguon"
+            placeholder="Tất cả nguồn"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
         </div>
-        <Button variant="outline" onClick={() => reload()}>Lam moi</Button>
+        <Button variant="outline" onClick={() => reload()}>Làm mới</Button>
       </div>
 
       {(error || searchErr) && <ErrorState message={error || searchErr!} />}
@@ -71,7 +71,7 @@ export default function ProductsPage() {
           ))}
         </div>
       ) : products.length === 0 ? (
-        <EmptyState title="Khong co san pham" description="Chua co san pham nao tu nguon dong bo." />
+        <EmptyState title="Không có sản phẩm" description="Chưa có sản phẩm nào từ nguồn đồng bộ." />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {products.map((p) => (
@@ -99,7 +99,7 @@ export default function ProductsPage() {
       )}
 
       {!loading && !searching && products.length > 0 && (
-        <p className="text-xs text-center text-muted-foreground">{products.length} san pham</p>
+        <p className="text-xs text-center text-muted-foreground">{products.length} sản phẩm</p>
       )}
     </div>
   );

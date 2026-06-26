@@ -233,6 +233,7 @@ export interface Advisory {
   postId: string;
   userId: number | null;
   content: string | null;
+  reply: string | null;
   status: string | null;
   usedProducts: Array<{
     productId?: string;
@@ -243,12 +244,32 @@ export interface Advisory {
   }>;
   needsHumanCheck: boolean;
   checkNote: string | null;
+  intent: string | null;
+  confidence: string | null;
+  permalink: string | null;
+  authorName: string | null;
+  groupId: string | null;
+  groupName: string | null;
+  postText: string | null;
+  needs: string | null;
+  budget: number | null;
   createdAt: string | null;
   updatedAt: string | null;
 }
 
 export interface AdvisoriesResponse {
   advisories: Advisory[];
+}
+
+export interface GenerateAdvisoriesResult {
+  ok: boolean;
+  error?: string;
+  scanned?: number;
+  created?: number;
+  skippedExisting?: number;
+  ignored?: number;
+  noProduct?: number;
+  flagged?: number;
 }
 
 /* ─── Conversations (per-user) ─── */
