@@ -480,6 +480,33 @@ export async function runMigrations() {
     { name: "job_id", ddl: "job_id VARCHAR(64)" },
     { name: "sent_at", ddl: "sent_at BIGINT" },
   ]);
+  // Nới rộng post_id VARCHAR(64) -> VARCHAR(191) để chứa token "pfbid..." của
+  // Facebook hiện đại (dài 60-90+ ký tự, KHÔNG còn là số thuần). VARCHAR(64) cũ
+  // sẽ CHẶN/cắt cụt INSERT cho bài có pfbid -> bài bị rớt server-side y hệt triệu
+  // chứng "lưu được rất ít bài". post_id là PK của posts và được comments tham
+  // chiếu qua FK, nên tắt kiểm FK tạm thời, MODIFY tất cả các phía về cùng kiểu,
+  // rồi bật lại. 191 = giới hạn an toàn cho cột utf8mb4 có index (767 byte / 4).
+  // Idempotent: MODIFY về đúng kiểu hiện có không gây hại.
+  try {
+    await pool.query("SET FOREIGN_KEY_CHECKS=0");
+    for (const [table, col] of [
+      ["posts", "post_id"],
+      ["comments", "post_id"],
+      ["conversations", "post_id"],
+      ["advisories", "post_id"],
+      ["group_prices", "post_id"],
+    ]) {
+      try {
+        await pool.query(
+          `ALTER TABLE \`${table}\` MODIFY COLUMN \`${col}\` VARCHAR(191)`
+        );
+      } catch (e) {
+        // Bảng/cột chưa tồn tại ở DB mới -> CREATE TABLE đã đặt đúng kiểu; bỏ qua.
+      }
+    }
+  } finally {
+    await pool.query("SET FOREIGN_KEY_CHECKS=1");
+  }
   // Seed base keyword lists for ALL filter categories from KEYWORD_SEEDS:
   //   sell    -> phễu trích giá group + "Người bán" của Lọc thông minh.
   //   buy     -> KHÁCH CẦN MUA (Lọc thông minh).

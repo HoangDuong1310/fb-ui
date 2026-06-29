@@ -37,10 +37,28 @@ export interface Post {
   permalink?: string | null;
   timestamp?: string | null;
   crawledAt?: string | null;
+  /** ID of the user who crawled this post — null for legacy rows */
+  crawledBy?: number | null;
+  /** 1 = the owner shared this into the pool; 0 = private */
+  shareCrawled?: number | null;
 }
 
 export interface PostsResponse {
   posts: Post[];
+}
+
+/** A comment recorded by any user on a given post (own + shared pool). */
+export interface PostComment {
+  id: number;
+  postId: string;
+  userId: number | null;
+  content: string | null;
+  commentedAt: string | null;
+  shareCommented: number | null;
+}
+
+export interface PostCommentsResponse {
+  comments: PostComment[];
 }
 
 export interface GroupPrice {
