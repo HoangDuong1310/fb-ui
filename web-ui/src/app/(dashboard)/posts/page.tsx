@@ -256,13 +256,13 @@ export default function PostsPage() {
             </p>
           )}
 
-          {analyzeResult && analyzeResult.usedProducts.length > 0 && (
+          {analyzeResult && (analyzeResult.usedProducts?.length ?? 0) > 0 && (
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground">
                 Sản phẩm tư vấn:
               </p>
               <ul className="space-y-0.5">
-                {analyzeResult.usedProducts.map((prod, i) => (
+                {(analyzeResult.usedProducts ?? []).map((prod, i) => (
                   <li key={i} className="flex items-center justify-between text-xs">
                     <span className="truncate">{prod.name}</span>
                     {prod.price ? (

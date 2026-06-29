@@ -372,7 +372,7 @@ async function cheapestMarketFor(mine) {
 async function searchProducts({ query, maxPrice, limit } = {}) {
   const pool = getPool();
   const lim = Math.min(Math.max(Number(limit) || 18, 1), 50);
-  const conditions = ["(price IS NULL OR price > 0)", "in_stock != 0"];
+  const conditions = ["(price IS NULL OR price > 0)"];
   const params = {};
 
   if (query) {
@@ -391,18 +391,18 @@ async function searchProducts({ query, maxPrice, limit } = {}) {
     params.maxPrice = Number(maxPrice);
   }
   params.limit = lim;
-  const sql = `SELECT id, name, price, build_price AS buildPrice, category, source_id AS sourceId, store, warranty, in_stock AS inStock, permalink FROM products WHERE ${conditions.join(" AND ")} ORDER BY price ASC LIMIT :limit`;
+  const sql = `SELECT product_id AS id, name, price, category, source AS sourceId, url AS permalink FROM products WHERE ${conditions.join(" AND ")} ORDER BY price ASC LIMIT :limit`;
   const [rows] = await pool.query(sql, params);
   return (rows || []).map((r) => ({
     id: r.id,
     name: r.name,
     price: r.price != null ? Number(r.price) : null,
-    buildPrice: r.buildPrice != null ? Number(r.buildPrice) : null,
+    buildPrice: null,
     category: r.category || "",
     sourceId: r.sourceId || "",
-    store: r.store || "",
-    warranty: r.warranty || "",
-    inStock: r.inStock !== false && r.inStock !== 0,
+    store: "",
+    warranty: "",
+    inStock: true,
     permalink: r.permalink || "",
   }));
 }
@@ -610,9 +610,10 @@ export async function draftAdvisory(post, products, intentInfo, userId) {
     `Ngân sách khách: ${intentInfo.budget ? intentInfo.budget + "₫" : "không rõ"}\n` +
     `Nhu cầu: ${intentInfo.needs || "không rõ"}\n` +
     `Categories: ${(intentInfo.categories || []).join(", ")}\n\n` +
-    `Hãy đọc tin nhắn khách, chọn sản phẩm phù hợp từ kho (nếu có) và soạn回复. ` +
+    `Hãy đọc tin nhắn khách, chọn sản phẩm phù hợp từ kho (nếu có) và soạn reply. ` +
     `Nếu "giá tt" (giá thị trường) thấp hơn "giá kho" đáng kể, hãy đề cập để tư vấn chân thực. ` +
-    `Nếu không có sản phẩm kho phù hợp thì KHÔNG reply.`;
+    `Nếu không có sản phẩm kho phù hợp, hãy vẫn soạn tư vấn chung dựa trên nhu cầu khách mà không đề cập sản phẩm cụ thể. ` +
+    `Chỉ để reply rỗng nếu bài hoàn toàn không liên quan đến tư vấn mua hàng.`;
 
   const images = Array.isArray(post.images) ? post.images.filter((u) => /^https?:\/\//i.test(u)).slice(0, 4) : [];
   const messages = [
@@ -688,7 +689,8 @@ export async function draftAdvisory(post, products, intentInfo, userId) {
       needsHumanCheck,
       checkNote: checkNotes.join(" "),
     };
-  } catch {
+  } catch (err) {
+    console.error("[draftAdvisory] callAI error:", err?.message || err);
     return { allowReply: false, error: "ai_error" };
   }
 }
@@ -711,39 +713,64 @@ export async function analyzePost(post, userId) {
   let matches = [];
   const query = (info.keywords || info.needs || "").trim();
   if (query) {
-    matches = await searchProducts({ query, maxPrice: info.budget || undefined, limit: 18 });
-    matches = (matches || []).filter((p) => (Number(p.price) || 0) > 0 && p.inStock !== false);
-    if (!matches.length) {
-      matches = (await searchProducts({ query, limit: 18 })).filter(
-        (p) => (Number(p.price) || 0) > 0 && p.inStock !== false
-      );
+    try {
+      matches = await searchProducts({ query, maxPrice: info.budget || undefined, limit: 18 });
+      matches = (matches || []).filter((p) => (Number(p.price) || 0) > 0 && p.inStock !== false);
+      if (!matches.length) {
+        matches = (await searchProducts({ query, limit: 18 })).filter(
+          (p) => (Number(p.price) || 0) > 0 && p.inStock !== false
+        );
+      }
+    } catch (err) {
+      // A product-lookup failure (e.g. schema drift) must not abort the whole
+      // analysis — fall back to drafting with no product matches.
+      console.error("[analyzePost] searchProducts failed:", err?.message || err);
+      matches = [];
     }
   }
 
   const draft = await draftAdvisory(post, matches, info, userId);
   if (!draft || !draft.allowReply) {
-    return { ok: false, error: "AI chưa soạn được trả lời cho bài này (nội dung chưa rõ hoặc ngoài chuyên môn)." };
+    const subErrMessages = {
+      empty_reply: "AI xác định bài viết này không phải yêu cầu tư vấn mua hàng.",
+      parse_error: "AI trả về phản hồi không hợp lệ — hãy thử lại.",
+      ai_error: "Lỗi kết nối đến AI — kiểm tra API key và kết nối mạng trong Cài đặt.",
+    };
+    const msg = subErrMessages[draft?.error] ?? "AI chưa soạn được trả lời cho bài này (nội dung chưa rõ hoặc ngoài chuyên môn).";
+    return { ok: false, error: msg };
   }
 
-  const saved = await saveAdvisory({
-    postId: post.postId,
-    userId: userId ?? null,
-    groupId: post.groupId || "",
-    groupName: post.groupName || "",
-    permalink: post.permalink || "",
-    authorName: post.authorName || "",
-    postText: String(post.text || "").slice(0, 1000),
-    intent: info.intent,
-    needs: info.needs,
-    budget: info.budget || null,
-    reply: draft.reply,
-    usedProducts: draft.usedProducts || [],
-    confidence: draft.confidence,
-    needsHumanCheck: !!draft.needsHumanCheck,
-    checkNote: draft.checkNote || "",
-    status: "pending",
-    source: "manual",
-  });
+  let saved = null;
+  try {
+    saved = await saveAdvisory({
+      postId: post.postId,
+      userId: userId ?? null,
+      groupId: post.groupId || "",
+      groupName: post.groupName || "",
+      permalink: post.permalink || "",
+      authorName: post.authorName || "",
+      postText: String(post.text || "").slice(0, 1000),
+      intent: info.intent,
+      needs: info.needs,
+      budget: info.budget || null,
+      reply: draft.reply,
+      usedProducts: draft.usedProducts || [],
+      confidence: draft.confidence,
+      needsHumanCheck: !!draft.needsHumanCheck,
+      checkNote: draft.checkNote || "",
+      status: "pending",
+      source: "manual",
+    });
+  } catch (err) {
+    // The AI draft succeeded; only the DB write failed (e.g. schema drift —
+    // a missing column on the advisories table). Surface a clear, actionable
+    // message instead of a generic 500 "internal error".
+    console.error("[analyzePost] saveAdvisory failed:", err?.message || err);
+    return {
+      ok: false,
+      error: "Đã soạn được trả lời nhưng lưu thất bại (lỗi cơ sở dữ liệu). Hãy khởi động lại server để chạy migration, rồi thử lại.",
+    };
+  }
 
   return {
     ok: true,

@@ -10,8 +10,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
-import { Save, RefreshCw, KeyRound, Globe, Cpu, Share2 } from "lucide-react";
+import { Save, RefreshCw, KeyRound, Globe, Cpu, Share2, ListRestart } from "lucide-react";
 
 export default function SettingsPage() {
   /* ── AI config ── */
@@ -27,6 +34,8 @@ export default function SettingsPage() {
   const [apiKey, setApiKey] = useState("");
   const [clearKey, setClearKey] = useState(false);
   const [savingAi, setSavingAi] = useState(false);
+  const [modelList, setModelList] = useState<string[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
 
   /* ── Share prefs ── */
   const {
@@ -56,6 +65,25 @@ export default function SettingsPage() {
       setShareGroupPrices(shareData.shareGroupPricesDefault);
     }
   }, [shareData]);
+
+  /* ── Load model list from AI provider ── */
+  const handleLoadModels = useCallback(async () => {
+    setLoadingModels(true);
+    try {
+      const res = await apiFetch<{ ok: boolean; models?: string[]; error?: string }>("/api/ai/models");
+      if (res.ok && res.models?.length) {
+        setModelList(res.models);
+        // If current model value isn't in the list, keep it; user can pick from list
+        toast.success(`Đã tải ${res.models.length} model`);
+      } else {
+        toast.error(res.error || "Không tải được danh sách model");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Lỗi khi tải danh sách model");
+    } finally {
+      setLoadingModels(false);
+    }
+  }, []);
 
   /* ── Save AI config ── */
   const handleSaveAi = useCallback(
@@ -176,16 +204,44 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="model">
-                <KeyRound className="mr-1 inline-block size-3.5" />
-                Mô hình
-              </Label>
-              <Input
-                id="model"
-                placeholder={aiData?.modelDefault || "claude-opus-4.8"}
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-              />
+              <div className="flex items-center justify-between">
+                <Label htmlFor="model">
+                  <KeyRound className="mr-1 inline-block size-3.5" />
+                  Mô hình
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLoadModels}
+                  disabled={loadingModels}
+                  className="h-6 px-2 text-xs"
+                >
+                  <ListRestart className="mr-1 size-3" />
+                  {loadingModels ? "Đang tải..." : "Tải danh sách"}
+                </Button>
+              </div>
+              {modelList.length > 0 ? (
+                <Select value={model} onValueChange={setModel}>
+                  <SelectTrigger id="model">
+                    <SelectValue placeholder={aiData?.modelDefault || "Chọn model..."} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {modelList.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  id="model"
+                  placeholder={aiData?.modelDefault || "claude-opus-4.8"}
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                />
+              )}
             </div>
 
             <div className="space-y-2">

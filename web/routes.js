@@ -1658,8 +1658,63 @@ dataRouter.post("/ai/analyze", asyncHandler(async (req, res) => {
   if (!post || typeof post.text !== "string" || !post.text.trim()) {
     return res.status(400).json({ error: "missing post", message: "Thiếu nội dung bài viết cần phân tích." });
   }
-  const result = await analyzePost(post, req.userId);
+  // Normalize field aliases: web-ui gửi url/author, analyzePost đọc permalink/authorName
+  const normalizedPost = {
+    ...post,
+    permalink: post.permalink || post.url || "",
+    authorName: post.authorName || post.author || "",
+  };
+  const result = await analyzePost(normalizedPost, req.userId);
+  if (!result.ok) {
+    // Trả 422 để apiFetch ném lỗi → handleAnalyze bắt và hiện toast.error
+    return res.status(422).json({ error: result.error });
+  }
   res.json(result);
+}));
+
+// GET /api/ai/models — Proxy tới endpoint /models của nhà cung cấp AI đã cấu
+// hình cho user. Trả { ok: true, models: string[] } hoặc { ok: false, error }.
+dataRouter.get("/ai/models", asyncHandler(async (req, res) => {
+  const pool = getPool();
+  const [rows] = await pool.query(
+    "SELECT ai_api_base, ai_api_key FROM users WHERE id = :id",
+    { id: req.userId }
+  );
+  const row = rows && rows[0];
+  const apiBase = ((row && row.ai_api_base) || env.aiApiBase || "https://danglamgiau.com/v1").replace(/\/+$/, "");
+  const apiKey = (row && row.ai_api_key) || "";
+  if (!apiKey) {
+    return res.status(400).json({ ok: false, error: "Chưa cấu hình API key. Hãy nhập key và lưu trước khi tải danh sách model." });
+  }
+  let resp;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      resp = await fetch(apiBase + "/models", {
+        method: "GET",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+        signal: ctrl.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (e) {
+    const msg = e && e.name === "AbortError" ? "Quá thời gian tải danh sách model." : "Lỗi mạng khi tải danh sách model.";
+    return res.status(502).json({ ok: false, error: msg });
+  }
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => "");
+    return res.status(502).json({ ok: false, error: "API lỗi " + resp.status + " (" + body.slice(0, 120) + ")" });
+  }
+  let data;
+  try { data = await resp.json(); } catch { return res.status(502).json({ ok: false, error: "Không đọc được phản hồi danh sách model." }); }
+  const arr = data && Array.isArray(data.data) ? data.data : [];
+  const models = arr.map((m) => (m && m.id ? String(m.id) : "")).filter(Boolean);
+  if (!models.length) {
+    return res.status(502).json({ ok: false, error: "Endpoint không trả về model nào." });
+  }
+  res.json({ ok: true, models });
 }));
 
 // POST /api/ai/approve-advisory — Approve a drafted advisory and create a
