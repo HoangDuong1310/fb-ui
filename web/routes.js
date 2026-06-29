@@ -196,11 +196,16 @@ function mapPostRow(r) {
 
 /* ------------------------------- POSTS --------------------------------- */
 
-// GET /api/posts?groupId= — share-filtered list, newest crawl first.
+// GET /api/posts?groupId=&mine=1 — share-filtered list, newest crawl first.
+// When mine=1, the shared pool is excluded so only the caller's own crawled
+// posts are returned (used by the dashboard "Chỉ của tôi" filter).
 dataRouter.get("/posts", asyncHandler(async (req, res) => {
   const userId = req.userId;
-  const { groupId } = req.query;
-  const where = ["(crawled_by_user_id = :userId OR share_crawled = 1)"];
+  const { groupId, mine } = req.query;
+  const mineOnly = mine === "1" || mine === "true";
+  const where = mineOnly
+    ? ["crawled_by_user_id = :userId"]
+    : ["(crawled_by_user_id = :userId OR share_crawled = 1)"];
   const params = { userId };
   if (groupId) {
     where.push("group_id = :groupId");
@@ -366,13 +371,19 @@ dataRouter.patch("/posts/:id", asyncHandler(async (req, res) => {
 
 /* ------------------------------- GROUPS -------------------------------- */
 
-// GET /api/groups — all groups (shared pool, no per-row share flag), newest
-// first. postCount is computed from the caller's visible posts.
+// GET /api/groups — chỉ các nhóm MÀ CALLER đã tham gia (join qua user_groups),
+// newest first. Trước đây trả về toàn bộ bảng groups (shared pool) khiến "chọn
+// tất cả" quét cả nhóm của user khác. postCount tính theo bài viết caller thấy.
 dataRouter.get("/groups", asyncHandler(async (req, res) => {
   const userId = req.userId;
   const pool = getPool();
   const [groups] = await pool.query(
-    "SELECT * FROM `groups` ORDER BY created_at DESC"
+    `SELECT g.*
+       FROM \`groups\` g
+       JOIN user_groups ug ON ug.group_id = g.group_id
+      WHERE ug.user_id = :userId
+      ORDER BY g.created_at DESC`,
+    { userId }
   );
   const [counts] = await pool.query(
     `SELECT group_id, COUNT(*) AS count
@@ -395,7 +406,11 @@ dataRouter.get("/groups", asyncHandler(async (req, res) => {
   });
 }));
 
-// POST /api/groups — bulk upsert by group_id.
+// POST /api/groups — bulk upsert by group_id. Ngoài việc ghi/cập nhật bản ghi
+// nhóm dùng chung (groups), CÒN ghi membership của caller vào user_groups để
+// nhóm hiện ra trong danh sách RIÊNG của họ. `added`/`updated` đếm theo
+// membership của caller (đã tham gia trước đó hay chưa), không theo bảng groups
+// dùng chung — đúng với cảm nhận "nhóm của tôi" ở phía dashboard.
 dataRouter.post("/groups", asyncHandler(async (req, res) => {
   const userId = req.userId;
   const groups = Array.isArray(req.body?.groups) ? req.body.groups : [];
@@ -408,7 +423,9 @@ dataRouter.post("/groups", asyncHandler(async (req, res) => {
     let updated = 0;
     for (const g of groups) {
       if (!g || !g.groupId) continue;
-      const [result] = await conn.query(
+      // Bản ghi nhóm dùng chung: giữ crawled_by_user_id là CHỦ ĐẦU TIÊN (chỉ set
+      // khi insert mới), các lần sau chỉ cập nhật tên + updated_at.
+      await conn.query(
         `INSERT INTO \`groups\`
            (group_id, group_name, crawled_by_user_id, created_at, updated_at)
          VALUES (:groupId, :groupName, :userId, NOW(), NOW())
@@ -421,7 +438,14 @@ dataRouter.post("/groups", asyncHandler(async (req, res) => {
           userId,
         }
       );
-      if (result.affectedRows === 1) added += 1;
+      // Membership RIÊNG của caller. affectedRows === 1 => mới tham gia (added);
+      // === 0 (INSERT IGNORE bỏ qua do trùng PK) => đã tham gia từ trước.
+      const [mem] = await conn.query(
+        `INSERT IGNORE INTO user_groups (user_id, group_id, created_at)
+         VALUES (:userId, :groupId, NOW())`,
+        { userId, groupId: g.groupId }
+      );
+      if (mem.affectedRows === 1) added += 1;
       else updated += 1;
     }
     await conn.commit();
@@ -434,11 +458,13 @@ dataRouter.post("/groups", asyncHandler(async (req, res) => {
   }
 }));
 
-// DELETE /api/groups/:id — remove a group entry (does not delete its posts).
+// DELETE /api/groups/:id — gỡ nhóm khỏi danh sách RIÊNG của caller (xoá
+// membership trong user_groups). KHÔNG xoá bản ghi nhóm dùng chung hay bài viết,
+// vì user khác có thể vẫn đang tham gia nhóm đó.
 dataRouter.delete("/groups/:id", asyncHandler(async (req, res) => {
   const [result] = await getPool().query(
-    "DELETE FROM `groups` WHERE group_id = :id",
-    { id: req.params.id }
+    "DELETE FROM user_groups WHERE user_id = :userId AND group_id = :id",
+    { userId: req.userId, id: req.params.id }
   );
   res.json({ deleted: result.affectedRows });
 }));
@@ -2136,7 +2162,12 @@ adminRouter.get(
         { userId, limit: OVERVIEW_SAMPLE_LIMIT }
       ),
       pool.query(
-        "SELECT * FROM `groups` WHERE crawled_by_user_id = :userId ORDER BY updated_at DESC LIMIT :limit",
+        `SELECT g.*
+           FROM \`groups\` g
+           JOIN user_groups ug ON ug.group_id = g.group_id
+          WHERE ug.user_id = :userId
+          ORDER BY g.updated_at DESC
+          LIMIT :limit`,
         { userId, limit: OVERVIEW_SAMPLE_LIMIT }
       ),
       pool.query(
@@ -2162,7 +2193,7 @@ adminRouter.get(
       pool.query(
         `SELECT
            (SELECT COUNT(*) FROM posts WHERE crawled_by_user_id = :userId) AS posts,
-           (SELECT COUNT(*) FROM \`groups\` WHERE crawled_by_user_id = :userId) AS \`groups\`,
+           (SELECT COUNT(*) FROM user_groups WHERE user_id = :userId) AS \`groups\`,
            (SELECT COUNT(*) FROM comments WHERE user_id = :userId) AS comments,
            (SELECT COUNT(*) FROM conversations WHERE user_id = :userId) AS conversations,
            (SELECT COUNT(*) FROM advisories WHERE user_id = :userId) AS advisories,

@@ -44,6 +44,20 @@ const TABLES = [
     updated_at DATETIME
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
+  // Bảng nối THÀNH VIÊN nhóm theo TỪNG user. `groups` dùng group_id làm PK toàn
+  // cục (một dòng/nhóm, một chủ crawl đầu tiên) nên KHÔNG thể biểu diễn việc
+  // nhiều user cùng tham gia một nhóm. Bảng này tách quan hệ user<->group ra
+  // riêng: mỗi user chỉ thấy ĐÚNG các nhóm MÌNH đã quét/lưu, độc lập với việc ai
+  // crawl trước. ON DELETE CASCADE: xoá user hoặc group thì membership tự dọn.
+  `CREATE TABLE IF NOT EXISTS user_groups (
+    user_id INT NOT NULL,
+    group_id VARCHAR(64) NOT NULL,
+    created_at DATETIME,
+    PRIMARY KEY (user_id, group_id),
+    CONSTRAINT fk_ug_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ug_group FOREIGN KEY (group_id) REFERENCES \`groups\`(group_id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
   `CREATE TABLE IF NOT EXISTS comments (
     id INT PRIMARY KEY AUTO_INCREMENT,
     post_id VARCHAR(64),
@@ -490,6 +504,17 @@ export async function runMigrations() {
     "UPDATE IGNORE learned_keywords SET type='sell' WHERE type='sell_signal'"
   );
   await pool.query("DELETE FROM learned_keywords WHERE type='sell_signal'");
+  // Backfill bảng nối user_groups từ dữ liệu CŨ. Trước khi có bảng này, mỗi
+  // nhóm chỉ ghi 1 chủ ở groups.crawled_by_user_id. Tạo membership ban đầu cho
+  // chính chủ đó để họ KHÔNG mất nhóm sau khi GET /api/groups chuyển sang lọc
+  // theo user. INSERT IGNORE -> idempotent, không đụng membership đã có; chỉ
+  // backfill các dòng groups có chủ hợp lệ (crawled_by_user_id NOT NULL).
+  await pool.query(
+    `INSERT IGNORE INTO user_groups (user_id, group_id, created_at)
+       SELECT crawled_by_user_id, group_id, COALESCE(created_at, NOW())
+         FROM \`groups\`
+        WHERE crawled_by_user_id IS NOT NULL`
+  );
   for (const src of SEED_PRICE_SOURCES) {
     await pool.query(
       "INSERT IGNORE INTO sources (id, config, updated_at) VALUES (?, ?, NOW())",
