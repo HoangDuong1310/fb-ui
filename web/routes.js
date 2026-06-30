@@ -191,6 +191,8 @@ function mapPostRow(r) {
     updatedAt: r.updated_at,
     shareCrawled: r.share_crawled,
     parsedAt: r.parsed_at,
+    reactions: r.reactions,
+    comments: r.comments,
   };
 }
 
@@ -257,10 +259,11 @@ dataRouter.post("/posts", asyncHandler(async (req, res) => {
         `INSERT INTO posts
            (post_id, group_id, group_name, author_name, author_profile, text,
             images, timestamp, permalink, crawled_by_user_id, crawled_at,
-            updated_at, share_crawled)
+            updated_at, share_crawled, reactions, comments)
          VALUES
            (:postId, :groupId, :groupName, :authorName, :authorProfile, :text,
-            :images, :timestamp, :permalink, :userId, NOW(), NOW(), :shareCrawled)
+            :images, :timestamp, :permalink, :userId, NOW(), NOW(), :shareCrawled,
+            :reactions, :comments)
          ON DUPLICATE KEY UPDATE
            group_id = VALUES(group_id),
            group_name = VALUES(group_name),
@@ -270,6 +273,8 @@ dataRouter.post("/posts", asyncHandler(async (req, res) => {
            images = VALUES(images),
            timestamp = VALUES(timestamp),
            permalink = VALUES(permalink),
+           reactions = VALUES(reactions),
+           comments = VALUES(comments),
            updated_at = NOW()`,
         {
           postId: p.postId,
@@ -283,6 +288,8 @@ dataRouter.post("/posts", asyncHandler(async (req, res) => {
           permalink: p.permalink ?? null,
           userId,
           shareCrawled,
+          reactions: p.reactions ?? null,
+          comments: p.comments ?? null,
         }
       );
       // mysql2 affectedRows is 1 for a fresh insert and 2 for an update.

@@ -33,6 +33,8 @@ const TABLES = [
     updated_at DATETIME,
     share_crawled BOOL DEFAULT 1,
     parsed_at DATETIME NULL,
+    reactions BIGINT DEFAULT NULL,
+    comments BIGINT DEFAULT NULL,
     CONSTRAINT fk_posts_user FOREIGN KEY (crawled_by_user_id) REFERENCES users(id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
@@ -479,6 +481,13 @@ export async function runMigrations() {
     { name: "source", ddl: "source VARCHAR(32)" },
     { name: "job_id", ddl: "job_id VARCHAR(64)" },
     { name: "sent_at", ddl: "sent_at BIGINT" },
+  ]);
+  // posts thêm reactions/comments (BIGINT) để lưu số lượt tương tác/bình luận
+  // parse được từ GraphQL. ensureColumns idempotent: chạy ALTER ADD COLUMN khi
+  // restart nếu DB cũ chưa có cột, bỏ qua nếu đã tồn tại (ER_DUP_FIELDNAME).
+  await ensureColumns(pool, "posts", [
+    { name: "reactions", ddl: "reactions BIGINT DEFAULT NULL" },
+    { name: "comments", ddl: "comments BIGINT DEFAULT NULL" },
   ]);
   // Nới rộng post_id VARCHAR(64) -> VARCHAR(191) để chứa token "pfbid..." của
   // Facebook hiện đại (dài 60-90+ ký tự, KHÔNG còn là số thuần). VARCHAR(64) cũ
